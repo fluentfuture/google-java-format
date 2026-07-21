@@ -80,17 +80,18 @@ public abstract class Doc {
   public static final int MAX_LINE_WIDTH = 1000;
 
   /** State for writing. */
-  public record State(int lastIndent, int indent, int column, boolean mustBreak) {
+  public record State(
+      int lastIndent, int indent, int column, boolean mustBreak, int relaxedUnindent) {
     public State(int indent0, int column0) {
-      this(indent0, indent0, column0, false);
+      this(indent0, indent0, column0, false, 0);
     }
 
     State withColumn(int column) {
-      return new State(lastIndent, indent, column, mustBreak);
+      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent);
     }
 
     State withMustBreak(boolean mustBreak) {
-      return new State(lastIndent, indent, column, mustBreak);
+      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent);
     }
   }
 
@@ -170,9 +171,22 @@ public abstract class Doc {
   static final class Level extends Doc {
     private final Indent plusIndent; // The extra indent following breaks.
     private final List<Doc> docs = new ArrayList<>(); // The elements of the level.
+    private Level parent = null;
 
     private Level(Indent plusIndent) {
       this.plusIndent = plusIndent;
+    }
+
+    void setParent(Level parent) {
+      this.parent = parent;
+    }
+
+    Level getParent() {
+      return parent;
+    }
+
+    Indent getPlusIndent() {
+      return plusIndent;
     }
 
     /**
@@ -242,7 +256,14 @@ public abstract class Doc {
       }
       State broken =
           computeBroken(
-              commentsHelper, maxWidth, new State(state.indent + plusIndent.eval(), state.column));
+              commentsHelper,
+              maxWidth,
+              new State(
+                  state.indent + plusIndent.eval(),
+                  state.indent + plusIndent.eval(),
+                  state.column,
+                  false,
+                  state.relaxedUnindent));
       return state.withColumn(broken.column);
     }
 
@@ -271,7 +292,8 @@ public abstract class Doc {
               state,
               /* optBreakDoc= */ Optional.empty(),
               splits.get(0),
-              plusIndent);
+              plusIndent,
+              this);
 
       // Handle following breaks and split.
       for (int i = 0; i < breaks.size(); i++) {
@@ -282,7 +304,8 @@ public abstract class Doc {
                 state,
                 Optional.of(breaks.get(i)),
                 splits.get(i + 1),
-                plusIndent);
+                plusIndent,
+                this);
       }
       return state;
     }
@@ -522,7 +545,8 @@ public abstract class Doc {
         State state,
         Optional<Break> optBreakDoc,
         List<Doc> split,
-        Indent parentPlusIndent) {
+        Indent parentPlusIndent,
+        Level currentLevel) {
       int breakWidth = optBreakDoc.isPresent() ? optBreakDoc.get().getWidth() : 0;
       int splitWidth = getWidth(split);
 
@@ -585,9 +609,25 @@ public abstract class Doc {
       if (optBreakDoc.isPresent()
           && !shouldBreak
           && optBreakDoc.get().fillMode == FillMode.RELAXED) {
-        int shiftedIndent = Math.max(splitState.indent - parentPlusIndent.eval(), 0);
+        int parentPlus = parentPlusIndent.eval();
+        if (currentLevel.getPlusIndent().eval() == 0) {
+          Level parentLevel = currentLevel.getParent();
+          while (parentLevel != null && parentLevel.getPlusIndent().eval() == 0) {
+            parentLevel = parentLevel.getParent();
+          }
+          if (parentLevel != null && parentLevel.getPlusIndent().eval() == 4) {
+            parentPlus += 4;
+          }
+        }
+        int shiftedIndent = Math.max(splitState.indent - parentPlus, 0);
+        int newRelaxedUnindent = splitState.relaxedUnindent + parentPlus;
         splitState =
-            new State(shiftedIndent, shiftedIndent, splitState.column, splitState.mustBreak);
+            new State(
+                shiftedIndent,
+                shiftedIndent,
+                splitState.column,
+                splitState.mustBreak,
+                newRelaxedUnindent);
       }
 
       state = computeSplit(commentsHelper, maxWidth, split, splitState);

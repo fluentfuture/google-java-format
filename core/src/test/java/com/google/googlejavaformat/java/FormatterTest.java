@@ -1023,9 +1023,9 @@ class T {
         class T {
           void f() {
             addArgs(Expr.newBuilder()
-                    .setId(1)
-                    .setName("foo_bar_baz_some_very_long_name_to_force_wrapping")
-                    .build());
+                .setId(1)
+                .setName("foo_bar_baz_some_very_long_name_to_force_wrapping")
+                .build());
           }
         }
         """;

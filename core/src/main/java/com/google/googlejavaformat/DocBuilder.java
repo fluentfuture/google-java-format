@@ -72,6 +72,7 @@ public final class DocBuilder {
   /** Close the current {@link Doc.Level}. */
   void close() {
     Doc.Level top = stack.removeLast();
+    top.setParent(stack.peekLast());
     stack.peekLast().add(top);
   }
 
