@@ -961,13 +961,11 @@ class T {
         """
         class T {
           void f() {
-            String s =
-                String.format(
-                    "simple template", firstArgumentName, secondArgumentName, thirdArgumentNameLong);
-            String s2 =
-                String.format(
-                    "this is a very long template string to force wrapping of arguments after it",
-                    firstArgumentName, secondArgumentName, thirdArgumentName);
+            String s = String.format(
+                "simple template", firstArgumentName, secondArgumentName, thirdArgumentNameLong);
+            String s2 = String.format(
+                "this is a very long template string to force wrapping of arguments after it",
+                firstArgumentName, secondArgumentName, thirdArgumentName);
             String s3 = String.format("short fit");
             Preconditions.checkState(
                 expressionStateConditionToCheck,
@@ -1005,5 +1003,52 @@ class T {
               }
             }
             """);
+  }
+
+  @Test
+  public void testRelaxedRectangularRule_onlyArgument() throws Exception {
+    String input =
+        """
+        class T {
+          void f() {
+            addArgs(Expr.newBuilder()
+                .setId(1)
+                .setName("foo_bar_baz_some_very_long_name_to_force_wrapping")
+                .build());
+          }
+        }
+        """;
+    String expected =
+        """
+        class T {
+          void f() {
+            addArgs(Expr.newBuilder()
+                    .setId(1)
+                    .setName("foo_bar_baz_some_very_long_name_to_force_wrapping")
+                    .build());
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
+  }
+
+  @Test
+  public void testRelaxedRectangularRule_assignmentFitsFlatOnNextLine() throws Exception {
+    String input =
+        """
+        class T {
+          static final Parser<String> PLAIN_IDENTIFIER = literally(one("[a-zA-Z_]"), zeroOrMore("[a-zA-Z0-9_]")).source().suchThat(s -> !KEYWORDS.contains(s), "identifier");
+        }
+        """;
+    String expected =
+        """
+        class T {
+          static final Parser<String> PLAIN_IDENTIFIER =
+              literally(one("[a-zA-Z_]"), zeroOrMore("[a-zA-Z0-9_]"))
+                  .source()
+                  .suchThat(s -> !KEYWORDS.contains(s), "identifier");
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
   }
 }

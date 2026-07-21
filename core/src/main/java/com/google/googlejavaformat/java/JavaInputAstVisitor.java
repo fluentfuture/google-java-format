@@ -2683,21 +2683,26 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     return count;
   }
 
-  private static boolean isChainable(ExpressionTree expr) {
-    if (expr == null) {
-      return false;
-    }
-    return (expr.getKind() == METHOD_INVOCATION || expr.getKind() == MEMBER_SELECT)
-        && dotChainLength(expr) > 2;
-  }
-
   private static boolean isRelaxable(ExpressionTree expr) {
     if (expr == null) {
       return false;
     }
-    return isChainable(expr)
-        || expr.getKind() == Tree.Kind.SWITCH_EXPRESSION
-        || expr.getKind() == Tree.Kind.LAMBDA_EXPRESSION;
+    if (expr.getKind() == Tree.Kind.SWITCH_EXPRESSION
+        || expr.getKind() == Tree.Kind.LAMBDA_EXPRESSION) {
+      return true;
+    }
+    if (expr.getKind() == Tree.Kind.METHOD_INVOCATION) {
+      MethodInvocationTree methodInvocation = (MethodInvocationTree) expr;
+      if (!methodInvocation.getArguments().isEmpty()) {
+        return true;
+      }
+      return dotChainLength(expr) > 2;
+    }
+    if (expr.getKind() == Tree.Kind.NEW_CLASS) {
+      NewClassTree newClass = (NewClassTree) expr;
+      return !newClass.getArguments().isEmpty();
+    }
+    return false;
   }
 
   private boolean isTypeAnnotation(AnnotationTree annotationTree) {
@@ -3216,7 +3221,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
     // don't break after the first element if it is every small, unless the
     // chain starts with another expression
-    int minLength = indentMultiplier * 4;
+    int minLength = indentMultiplier * 12;
     int length = needDot0 ? minLength : 0;
     for (ExpressionTree e : items) {
       if (needDot) {
@@ -3524,7 +3529,11 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
         }
         builder.close();
       } else {
-        builder.breakOp();
+        if (arguments.size() == 1 && isRelaxable(arguments.get(0))) {
+          builder.breakOp(Doc.FillMode.RELAXED, "", ZERO);
+        } else {
+          builder.breakOp();
+        }
         argList(arguments);
       }
     }
@@ -3573,7 +3582,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     return stringLiteral[0];
   }
 
-  private static final int MAX_ARG_LENGTH_FOR_FILLING = 40;
+  private static final int MAX_ARG_LENGTH_FOR_FILLING = 200;
 
   private boolean hasOnlyShortArguments(List<? extends ExpressionTree> expressions) {
     for (ExpressionTree expression : expressions) {
@@ -4041,6 +4050,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       builder.open(plusTwo);
       boolean first = first0.isYes();
       boolean lastOneGotBlankLineBefore = false;
+      Tree previousDeclaration = null;
       PeekingIterator<Tree> it = Iterators.peekingIterator(bodyDeclarations.iterator());
       while (it.hasNext()) {
         Tree bodyDeclaration = it.next();
@@ -4050,8 +4060,15 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
             bodyDeclaration.getKind() != VARIABLE || hasJavaDoc(bodyDeclaration);
         if (first) {
           builder.blankLineWanted(PRESERVE);
-        } else if (!first && (thisOneGetsBlankLineBefore || lastOneGotBlankLineBefore)) {
-          builder.blankLineWanted(YES);
+        } else {
+          boolean noBlankLineBetweenAbstractMethods =
+              isAbstractMethodWithoutComments(bodyDeclaration)
+                  && isAbstractMethodWithoutComments(previousDeclaration);
+          if (noBlankLineBetweenAbstractMethods) {
+            builder.blankLineWanted(BlankLineWanted.NO);
+          } else if (thisOneGetsBlankLineBefore || lastOneGotBlankLineBefore) {
+            builder.blankLineWanted(YES);
+          }
         }
         markForPartialFormat();
 
@@ -4065,6 +4082,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
         }
         first = false;
         lastOneGotBlankLineBefore = thisOneGetsBlankLineBefore;
+        previousDeclaration = bodyDeclaration;
       }
       dropEmptyDeclarations();
       builder.forcedBreak();
@@ -4333,5 +4351,26 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
 
   private void visitJcAnyPattern(JCTree.JCAnyPattern unused) {
     token("_");
+  }
+
+  private boolean isAbstractMethodWithoutComments(Tree tree) {
+    if (tree instanceof MethodTree methodTree) {
+      return methodTree.getBody() == null && !hasCommentsOrJavadoc(methodTree);
+    }
+    return false;
+  }
+
+  private boolean hasCommentsOrJavadoc(Tree bodyDeclaration) {
+    int position = ((JCTree) bodyDeclaration).getStartPosition();
+    Input.Token token = builder.getInput().getPositionTokenMap().get(position);
+    if (token == null) {
+      return false;
+    }
+    for (Input.Tok tok : token.getToksBefore()) {
+      if (tok.isComment()) {
+        return true;
+      }
+    }
+    return false;
   }
 }

@@ -326,7 +326,160 @@ public abstract class Doc {
       }
     }
 
-    private static WidthResult getHeadWidth(Doc doc) {
+    private static boolean isMethodCall(Doc doc) {
+      if (doc instanceof Token t) {
+        return t.getToken().getTok().getOriginalText().startsWith(".");
+      }
+      if (doc instanceof Level level) {
+        return !level.docs.isEmpty() && isMethodCall(level.docs.get(0));
+      }
+      return false;
+    }
+
+    private static boolean isArgumentsList(Doc doc) {
+      if (doc instanceof Token t) {
+        return t.getToken().getTok().getOriginalText().startsWith("(");
+      }
+      if (doc instanceof Level level) {
+        return !level.docs.isEmpty() && isArgumentsList(level.docs.get(0));
+      }
+      return false;
+    }
+
+    private static boolean isOpeningParen(Doc doc) {
+      if (doc instanceof Token t) {
+        return t.getToken().getTok().getOriginalText().endsWith("(");
+      }
+      if (doc instanceof Level level) {
+        return !level.docs.isEmpty() && isOpeningParen(level.docs.get(0));
+      }
+      return false;
+    }
+
+    private static boolean isComma(Doc doc) {
+      if (doc instanceof Token t) {
+        return t.getToken().getTok().getOriginalText().equals(",");
+      }
+      if (doc instanceof Level level) {
+        return !level.docs.isEmpty() && isComma(level.docs.get(level.docs.size() - 1));
+      }
+      return false;
+    }
+
+    private static boolean containsMethodCallOrArguments(Doc doc) {
+      if (doc instanceof Token t) {
+        return t.getToken().getTok().getOriginalText().contains("(");
+      }
+      if (doc instanceof Level level) {
+        for (Doc child : level.docs) {
+          if (containsMethodCallOrArguments(child)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    private static WidthResult getHeadWidth(Doc doc, boolean precededByOpeningParen, int column) {
+      if (doc instanceof Break b) {
+        if (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT) {
+          if (precededByOpeningParen) {
+            return new WidthResult(b.getWidth(), false);
+          }
+          return new WidthResult(0, true);
+        }
+        return new WidthResult(b.getWidth(), false);
+      }
+      if (doc instanceof Level level) {
+        if (column + level.getWidth() <= 100) {
+          return new WidthResult(level.getWidth(), false);
+        }
+        if (!hasInternalBreaks(level)) {
+          return new WidthResult(level.getWidth(), false);
+        }
+        int width = 0;
+        boolean skippedMethodCall = false;
+        for (Doc child : level.docs) {
+          if (child instanceof Break) {
+            break;
+          }
+          if (containsMethodCallOrArguments(child)) {
+            skippedMethodCall = true;
+            break;
+          }
+        }
+        for (int i = 0; i < level.docs.size(); i++) {
+          Doc child = level.docs.get(i);
+          if (child instanceof Break b
+              && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT)) {
+            if (i + 1 < level.docs.size()) {
+              Doc next = level.docs.get(i + 1);
+              if (isMethodCall(next) || isArgumentsList(next)) {
+                Doc prev = i > 0 ? level.docs.get(i - 1) : null;
+                boolean precededByComma = i > 0 && isComma(prev);
+                if (!precededByComma && !skippedMethodCall) {
+                  width += b.getWidth();
+                  skippedMethodCall = true;
+                  continue;
+                }
+              }
+            }
+            if (i > 0) {
+              Doc prev = level.docs.get(i - 1);
+              if (isOpeningParen(prev)) {
+                width += b.getWidth();
+                continue;
+              }
+            } else if (precededByOpeningParen) {
+              width += b.getWidth();
+              continue;
+            }
+            return new WidthResult(width, true);
+          }
+          boolean nextPreceded =
+              i > 0 ? isOpeningParen(level.docs.get(i - 1)) : precededByOpeningParen;
+          WidthResult childResult = getHeadWidth(child, nextPreceded, column + width);
+          width += childResult.width;
+          if (childResult.stopped) {
+            return new WidthResult(width, true);
+          }
+        }
+        return new WidthResult(width, false);
+      }
+      return new WidthResult(doc.getWidth(), false);
+    }
+
+    private static Level findArgumentsLevel(Doc doc) {
+      if (doc instanceof Level level) {
+        for (Doc child : level.docs) {
+          if (child instanceof Level childLevel) {
+            for (Doc grandChild : childLevel.docs) {
+              if (grandChild instanceof Level grandChildLevel) {
+                return grandChildLevel;
+              }
+            }
+            return childLevel;
+          }
+        }
+      }
+      return null;
+    }
+
+    private static WidthResult getHeadWidth(List<Doc> split, int column) {
+      int width = 0;
+      for (int i = 0; i < split.size(); i++) {
+        Doc doc = split.get(i);
+        boolean precededByOpeningParen = i > 0 ? isOpeningParen(split.get(i - 1)) : false;
+        WidthResult result = getHeadWidth(doc, precededByOpeningParen, column + width);
+        width += result.width;
+        if (result.stopped) {
+          return new WidthResult(width, true);
+        }
+      }
+      return new WidthResult(width, false);
+    }
+
+    private static WidthResult getHeadWidthStandard(Doc doc) {
       if (doc instanceof Break b) {
         if (b.fillMode == FillMode.UNIFIED) {
           return new WidthResult(0, true);
@@ -339,7 +492,7 @@ public abstract class Doc {
         }
         int width = 0;
         for (Doc child : level.docs) {
-          WidthResult childResult = getHeadWidth(child);
+          WidthResult childResult = getHeadWidthStandard(child);
           width += childResult.width;
           if (childResult.stopped) {
             return new WidthResult(width, true);
@@ -350,10 +503,10 @@ public abstract class Doc {
       return new WidthResult(doc.getWidth(), false);
     }
 
-    private static int getHeadWidth(List<Doc> split) {
+    private static int getHeadWidthStandard(List<Doc> split) {
       int width = 0;
       for (Doc doc : split) {
-        WidthResult result = getHeadWidth(doc);
+        WidthResult result = getHeadWidthStandard(doc);
         width += result.width;
         if (result.stopped) {
           break;
@@ -372,6 +525,7 @@ public abstract class Doc {
         Indent parentPlusIndent) {
       int breakWidth = optBreakDoc.isPresent() ? optBreakDoc.get().getWidth() : 0;
       int splitWidth = getWidth(split);
+
       boolean shouldBreak =
           (optBreakDoc.isPresent() && optBreakDoc.get().fillMode == FillMode.UNIFIED)
               || state.mustBreak
@@ -383,11 +537,41 @@ public abstract class Doc {
       if (optBreakDoc.isPresent()
           && optBreakDoc.get().fillMode == FillMode.RELAXED
           && !shouldBreak) {
-        int headWidth = getHeadWidth(split);
-        boolean fitsOnSameLine = state.column + breakWidth + headWidth <= maxWidth;
         int nextIndent = Math.max(state.lastIndent + optBreakDoc.get().plusIndent.eval(), 0);
-        boolean fitsOnNextLine = nextIndent + headWidth <= maxWidth;
-        if (!fitsOnSameLine && fitsOnNextLine) {
+        WidthResult headSameLineResult = getHeadWidth(split, state.column + breakWidth);
+        WidthResult headNextLineResult = getHeadWidth(split, nextIndent);
+
+        boolean headFitsOnSameLine =
+            state.column + breakWidth + headSameLineResult.width <= maxWidth;
+        boolean headFitsOnNextLine = nextIndent + headNextLineResult.width <= maxWidth;
+
+        boolean entireFitsOnSameLine = state.column + breakWidth + splitWidth <= maxWidth;
+        boolean entireFitsOnNextLine = nextIndent + splitWidth <= maxWidth;
+
+        boolean firstChildBrokenOnSameLineButFlatOnNextLine = false;
+        int accumulatedWidthSameLine = state.column + breakWidth;
+        int accumulatedWidthNextLine = nextIndent;
+        for (int i = 0; i < split.size(); i++) {
+          Doc child = split.get(i);
+          boolean precededByOpeningParen = i > 0 ? isOpeningParen(split.get(i - 1)) : false;
+          Level targetLevel = findArgumentsLevel(child);
+          if (targetLevel != null) {
+            WidthResult childSameLineResult =
+                getHeadWidth(targetLevel, precededByOpeningParen, accumulatedWidthSameLine);
+            WidthResult childNextLineResult =
+                getHeadWidth(targetLevel, precededByOpeningParen, accumulatedWidthNextLine);
+            if (childSameLineResult.stopped && !childNextLineResult.stopped) {
+              firstChildBrokenOnSameLineButFlatOnNextLine = true;
+              break;
+            }
+          }
+          accumulatedWidthSameLine += child.getWidth();
+          accumulatedWidthNextLine += child.getWidth();
+        }
+
+        if ((!headFitsOnSameLine && headFitsOnNextLine)
+            || firstChildBrokenOnSameLineButFlatOnNextLine
+            || (!entireFitsOnSameLine && entireFitsOnNextLine)) {
           shouldBreak = true;
         }
       }
