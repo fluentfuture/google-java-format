@@ -764,7 +764,56 @@ class T {
         """;
     assertThat(new Formatter().formatSource(inputSwitch)).isEqualTo(expectedSwitch);
 
-    // 6. Head section does not fit on same line but fits on next line
+    // 6. Rectangle rule for nested method call arguments inside switch rules (must break after `(`
+    // if method call not on its own line)
+    String inputNestedSwitchCall =
+        """
+        class T {
+          void f(int x) {
+            switch (x) {
+              case 1 -> builder.setCallExpr(Expr.Call.newBuilder().setFunction("_[_]").addArgs(convert(v.operand())).addArgs(convert(v.index())));
+            }
+          }
+        }
+        """;
+    String expectedNestedSwitchCall =
+        """
+        class T {
+          void f(int x) {
+            switch (x) {
+              case 1 -> builder.setCallExpr(
+                  Expr.Call.newBuilder()
+                      .setFunction("_[_]")
+                      .addArgs(convert(v.operand()))
+                      .addArgs(convert(v.index())));
+            }
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputNestedSwitchCall))
+        .isEqualTo(expectedNestedSwitchCall);
+
+    // Test to check why toMacro arguments break
+    String inputToMacro =
+        """
+        class T {
+          void f() {
+            toMacro(target, method.name(), args, (t, v, c1, c2) -> new CelExpr.Macro.FilterMap(t, v, c1, c2));
+          }
+        }
+        """;
+    String expectedToMacro =
+        """
+        class T {
+          void f() {
+            toMacro(
+                target, method.name(), args, (t, v, c1, c2) -> new CelExpr.Macro.FilterMap(t, v, c1, c2));
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputToMacro)).isEqualTo(expectedToMacro);
+
+    // 7. Head section does not fit on same line but fits on next line
     String inputForceBreak =
         """
         class T {
