@@ -79,7 +79,6 @@ public abstract class Doc {
    */
   public static final int MAX_LINE_WIDTH = 1000;
 
-  /** State for writing. */
   public record State(
       int lastIndent, int indent, int column, boolean mustBreak, int relaxedUnindent) {
     public State(int indent0, int column0) {
@@ -610,6 +609,7 @@ public abstract class Doc {
           && !shouldBreak
           && optBreakDoc.get().fillMode == FillMode.RELAXED) {
         int parentPlus = parentPlusIndent.eval();
+        boolean isMethodCall = false;
         if (currentLevel.getPlusIndent().eval() == 0) {
           Level parentLevel = currentLevel.getParent();
           while (parentLevel != null && parentLevel.getPlusIndent().eval() == 0) {
@@ -617,9 +617,13 @@ public abstract class Doc {
           }
           if (parentLevel != null && parentLevel.getPlusIndent().eval() == 4) {
             parentPlus += 4;
+            isMethodCall = true;
           }
         }
-        int shiftedIndent = Math.max(splitState.indent - parentPlus, 0);
+        int shiftedIndent = splitState.indent;
+        if (!isMethodCall || splitState.relaxedUnindent == 0) {
+          shiftedIndent = Math.max(splitState.indent - parentPlus, 0);
+        }
         int newRelaxedUnindent = splitState.relaxedUnindent + parentPlus;
         splitState =
             new State(
