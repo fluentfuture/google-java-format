@@ -419,6 +419,15 @@ public final class OpsBuilder {
   }
 
   /**
+   * Emit a {@link Doc.Break} with {@code RELAXED} fill mode.
+   *
+   * @param flat the {@link Doc.Break} when not broken
+   */
+  public final void breakToFillRelaxed(String flat) {
+    breakOp(Doc.FillMode.RELAXED, flat, ZERO);
+  }
+
+  /**
    * Emit a generic {@link Doc.Break}.
    *
    * @param fillMode the {@link Doc.FillMode}

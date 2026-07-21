@@ -649,6 +649,343 @@ class T {
   }
 
   @Test
+  public void testLocalStyleChanges() throws Exception {
+    // 1. @Override on the same line
+    String inputOverride =
+        """
+        class T {
+          @Override
+          public String toString() {
+            return "";
+          }
+        }
+        """;
+    String expectedOverride =
+        """
+        class T {
+          @Override public String toString() {
+            return "";
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputOverride)).isEqualTo(expectedOverride);
+
+    // 2. Short arguments wrapping in prose-style (independent)
+    String inputArguments =
+        """
+        class T {
+          void f() {
+            foo(firstLongArgumentName, secondLongArgumentName, thirdLongArgumentName, fourthLongArgumentName, fifthLongArgumentName);
+          }
+        }
+        """;
+    String expectedArguments =
+        """
+        class T {
+          void f() {
+            foo(
+                firstLongArgumentName, secondLongArgumentName, thirdLongArgumentName,
+                fourthLongArgumentName, fifthLongArgumentName);
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputArguments)).isEqualTo(expectedArguments);
+
+    // 3. Rectangle rule for method invocation chains (no break after `=`)
+    String inputChain =
+        """
+        class T {
+          void f() {
+            Foo foo = Foo.newBuilder().setFirstLongPropertyName(firstLongArgumentName).setSecondLongPropertyName(secondLongArgumentName).setThirdLongPropertyName(thirdLongArgumentName).build();
+          }
+        }
+        """;
+    String expectedChain =
+        """
+        class T {
+          void f() {
+            Foo foo = Foo.newBuilder()
+                .setFirstLongPropertyName(firstLongArgumentName)
+                .setSecondLongPropertyName(secondLongArgumentName)
+                .setThirdLongPropertyName(thirdLongArgumentName)
+                .build();
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputChain)).isEqualTo(expectedChain);
+
+    // 4. Rectangle rule for lambdas (no break after `->`)
+    String inputLambda =
+        """
+        class T {
+          void f() {
+            Runnable r = () -> Foo.newBuilder().setFirstLongPropertyName(firstLongArgumentName).setSecondLongPropertyName(secondLongArgumentName).setThirdLongPropertyName(thirdLongArgumentName).build();
+          }
+        }
+        """;
+    String expectedLambda =
+        """
+        class T {
+          void f() {
+            Runnable r = () -> Foo.newBuilder()
+                .setFirstLongPropertyName(firstLongArgumentName)
+                .setSecondLongPropertyName(secondLongArgumentName)
+                .setThirdLongPropertyName(thirdLongArgumentName)
+                .build();
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputLambda)).isEqualTo(expectedLambda);
+
+    // 5. Rectangle rule for switch rules (no break after `->`)
+    String inputSwitch =
+        """
+        class T {
+          void f(int x) {
+            switch (x) {
+              case 1 -> Foo.newBuilder().setFirstLongPropertyName(firstLongArgumentName).setSecondLongPropertyName(secondLongArgumentName).setThirdLongPropertyName(thirdLongArgumentName).build();
+            }
+          }
+        }
+        """;
+    String expectedSwitch =
+        """
+        class T {
+          void f(int x) {
+            switch (x) {
+              case 1 -> Foo.newBuilder()
+                  .setFirstLongPropertyName(firstLongArgumentName)
+                  .setSecondLongPropertyName(secondLongArgumentName)
+                  .setThirdLongPropertyName(thirdLongArgumentName)
+                  .build();
+            }
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputSwitch)).isEqualTo(expectedSwitch);
+
+    // 6. Head section does not fit on same line but fits on next line
+    String inputForceBreak =
+        """
+        class T {
+          void f() {
+            Foo foo = SomeVeryLongClassNameToNotFitOnSameLine3456789012345678901234567890123456789.newBuilder().setProp(val).build();
+          }
+        }
+        """;
+    String expectedForceBreak =
+        """
+        class T {
+          void f() {
+            Foo foo =
+                SomeVeryLongClassNameToNotFitOnSameLine3456789012345678901234567890123456789.newBuilder()
+                    .setProp(val)
+                    .build();
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputForceBreak)).isEqualTo(expectedForceBreak);
+
+    // 7. Nested switch expression inside switch rule
+    String inputNestedSwitch =
+        """
+        class T {
+          int f(int x, String s) {
+            return switch (x) {
+              case 1 -> switch (s) {
+                case "x" -> 1;
+                default -> 2;
+              };
+              default -> 0;
+            };
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputNestedSwitch)).isEqualTo(inputNestedSwitch);
+
+    // 8. Lambda: Head section does not fit on same line as `->` but fits on next line
+    String inputLambdaForceBreak =
+        """
+        class T {
+          void f() {
+            Runnable r = () -> SomeVeryLongClassNameToNotFitOnSameLine3456789012345678901234567890123456789.newBuilder().setProp(val).build();
+          }
+        }
+        """;
+    String expectedLambdaForceBreak =
+        """
+        class T {
+          void f() {
+            Runnable r = () ->
+                SomeVeryLongClassNameToNotFitOnSameLine3456789012345678901234567890123456789.newBuilder()
+                    .setProp(val)
+                    .build();
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputLambdaForceBreak))
+        .isEqualTo(expectedLambdaForceBreak);
+
+    // 9. Switch case: Head section does not fit on same line as `->` but fits on next line
+    String inputSwitchForceBreak =
+        """
+        class T {
+          void f(int x) {
+            switch (x) {
+              case 1 -> SomeVeryLongClassNameToNotFitOnSameLine345678901234567890123456789012345.newBuilder().setProp(val).build();
+            }
+          }
+        }
+        """;
+    String expectedSwitchForceBreak =
+        """
+        class T {
+          void f(int x) {
+            switch (x) {
+              case 1 ->
+                  SomeVeryLongClassNameToNotFitOnSameLine345678901234567890123456789012345.newBuilder()
+                      .setProp(val)
+                      .build();
+            }
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputSwitchForceBreak))
+        .isEqualTo(expectedSwitchForceBreak);
+
+    // 10. Method parameter list prose-style wrapping
+    String inputParams =
+        """
+        class T {
+          void f(int parameterOne, int parameterTwo, int parameterThree, int parameterFour, int parameterFive, int parameterSix) {}
+        }
+        """;
+
+    String expectedParams =
+        """
+        class T {
+          void f(
+              int parameterOne, int parameterTwo, int parameterThree, int parameterFour, int parameterFive,
+              int parameterSix) {}
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputParams)).isEqualTo(expectedParams);
+
+    // 11. Lambda parameter list prose-style wrapping
+    String inputLambdaParams =
+        """
+        class T {
+          void f() {
+            Runnable r = (int parameterOne, int parameterTwo, int parameterThree, int parameterFour, int parameterFive, int parameterSix) -> {};
+          }
+        }
+        """;
+    String expectedLambdaParams =
+        """
+        class T {
+          void f() {
+            Runnable r = (int parameterOne, int parameterTwo, int parameterThree, int parameterFour,
+                int parameterFive, int parameterSix) -> {};
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputLambdaParams)).isEqualTo(expectedLambdaParams);
+
+    // 12. Method parameters: fit flat on next line but not same line
+    String inputParamsNextLine =
+        """
+        interface T {
+          void f(int parameterOne, int parameterTwo, int parameterThree, int parameterFour, int parameterFive);
+        }
+        """;
+    String expectedParamsNextLine =
+        """
+        interface T {
+          void f(
+              int parameterOne, int parameterTwo, int parameterThree, int parameterFour, int parameterFive);
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputParamsNextLine)).isEqualTo(expectedParamsNextLine);
+
+    // 13. Guard statement same line formatting
+    String inputGuard =
+        """
+        class T {
+          int f(boolean x) {
+            if (x) return;
+            if (x) return 1;
+            if (x) return a;
+            if (x) return foo(a, b);
+            if (x) return a + b;
+            if (x) return foo(bar());
+            if (x) return a.b.c.foo();
+            if (x) return veryLongMethodNameWithManyArgumentsToForceItToWrapNoMatterWhatAndBeSuperLong(first, second, third);
+          }
+        }
+        """;
+    String expectedGuard =
+        """
+        class T {
+          int f(boolean x) {
+            if (x) return;
+            if (x) return 1;
+            if (x) return a;
+            if (x) return foo(a, b);
+            if (x) return a + b;
+            if (x) return foo(bar());
+            if (x) return a.b.c.foo();
+            if (x)
+              return veryLongMethodNameWithManyArgumentsToForceItToWrapNoMatterWhatAndBeSuperLong(
+                  first, second, third);
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputGuard)).isEqualTo(expectedGuard);
+
+    // 14. Format-method calls formatting
+    String inputFormat =
+        """
+        class T {
+          void f() {
+            String s = String.format("simple template", firstArgumentName, secondArgumentName, thirdArgumentNameLong);
+            String s2 = String.format("this is a very long template string to force wrapping of arguments after it", firstArgumentName, secondArgumentName, thirdArgumentName);
+            String s3 = String.format("short fit");
+            Preconditions.checkState(expressionStateConditionToCheck, "this is a very long checkState template to force wrapping", firstArgumentName, secondArgumentName);
+            Preconditions.checkState(x != null, "msg");
+            someVeryLongObjectInstanceNameToForceWrappingOfTheMethodInvocationBeforeTheTemplate.checkState(expressionStateConditionToCheck, "short template", first, second);
+            checkState(veryLongConditionExpressionToForceTheArgumentsListToWrapAndBreakEvenIfTheMethodFits, "short template", first, second);
+          }
+        }
+        """;
+    String expectedFormat =
+        """
+        class T {
+          void f() {
+            String s =
+                String.format(
+                    "simple template", firstArgumentName, secondArgumentName, thirdArgumentNameLong);
+            String s2 =
+                String.format(
+                    "this is a very long template string to force wrapping of arguments after it",
+                    firstArgumentName, secondArgumentName, thirdArgumentName);
+            String s3 = String.format("short fit");
+            Preconditions.checkState(
+                expressionStateConditionToCheck,
+                "this is a very long checkState template to force wrapping",
+                firstArgumentName, secondArgumentName);
+            Preconditions.checkState(x != null, "msg");
+            someVeryLongObjectInstanceNameToForceWrappingOfTheMethodInvocationBeforeTheTemplate.checkState(
+                expressionStateConditionToCheck, "short template", first, second);
+            checkState(
+                veryLongConditionExpressionToForceTheArgumentsListToWrapAndBreakEvenIfTheMethodFits,
+                "short template", first, second);
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputFormat)).isEqualTo(expectedFormat);
+  }
+
+  @Test
   public void removeTrailingTabsInComments() throws Exception {
     assertThat(
             new Formatter()

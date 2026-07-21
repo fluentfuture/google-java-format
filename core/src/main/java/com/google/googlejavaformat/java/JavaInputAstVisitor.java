@@ -36,6 +36,7 @@ import static com.sun.source.tree.Tree.Kind.ASSIGNMENT;
 import static com.sun.source.tree.Tree.Kind.BLOCK;
 import static com.sun.source.tree.Tree.Kind.EXTENDS_WILDCARD;
 import static com.sun.source.tree.Tree.Kind.IF;
+import static com.sun.source.tree.Tree.Kind.MEMBER_SELECT;
 import static com.sun.source.tree.Tree.Kind.METHOD_INVOCATION;
 import static com.sun.source.tree.Tree.Kind.NEW_ARRAY;
 import static com.sun.source.tree.Tree.Kind.NEW_CLASS;
@@ -172,7 +173,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.OptionalInt;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import javax.lang.model.element.Name;
 import org.jspecify.annotations.Nullable;
@@ -647,7 +647,11 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     scan(node.getVariable(), null);
     builder.space();
     splitToken(operatorName(node));
-    builder.breakOp(" ");
+    if (isRelaxable(node.getExpression())) {
+      builder.breakToFillRelaxed(" ");
+    } else {
+      builder.breakOp(" ");
+    }
     scan(node.getExpression(), null);
     builder.close();
     return null;
@@ -718,7 +722,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       visitAnnotations(annotations, BreakOrNot.NO, BreakOrNot.YES);
     }
     scan(node.getIdentifier(), null);
-    addArguments(node.getArguments(), plusFour);
+    addArguments(node, node.getArguments(), plusFour);
     builder.close();
     if (node.getClassBody() != null) {
       addBodyDeclarations(
@@ -826,7 +830,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       builder.guessToken("(");
       builder.guessToken(")");
     } else {
-      addArguments(init.getArguments(), plusFour);
+      addArguments(init, init.getArguments(), plusFour);
     }
     if (init.getClassBody() != null) {
       addBodyDeclarations(
@@ -1344,10 +1348,14 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       token("(");
     }
     boolean afterFirstToken = false;
+    Doc.FillMode fillMode =
+        hasOnlyShortParameters(node.getParameters())
+            ? Doc.FillMode.INDEPENDENT
+            : Doc.FillMode.UNIFIED;
     for (VariableTree parameter : node.getParameters()) {
       if (afterFirstToken) {
         token(",");
-        builder.breakOp(" ");
+        builder.breakOp(fillMode, " ", ZERO);
       }
       visitVariables(
           ImmutableList.of(parameter),
@@ -1365,7 +1373,11 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     if (statementBody) {
       builder.space();
     } else {
-      builder.breakOp(" ");
+      if (isRelaxable((ExpressionTree) node.getBody())) {
+        builder.breakToFillRelaxed(" ");
+      } else {
+        builder.breakToFill(" ");
+      }
     }
     switch (node.getBody()) {
       case BlockTree blockTree ->
@@ -1593,7 +1605,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       if (!isRecordConstructor) {
         if (!node.getParameters().isEmpty() || node.getReceiverParameter() != null) {
           // Break before args.
-          builder.breakToFill("");
+          builder.breakOp("");
           visitFormals(Optional.ofNullable(node.getReceiverParameter()), node.getParameters());
         }
         token(")");
@@ -2016,7 +2028,17 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
               AllowLeadingBlankLine.NO,
               AllowTrailingBlankLine.NO);
         } else {
-          builder.breakOp(" ");
+          ExpressionTree expr = null;
+          if (node.getBody() instanceof ExpressionStatementTree expressionStatementTree) {
+            expr = expressionStatementTree.getExpression();
+          } else if (node.getBody() instanceof ExpressionTree expressionTree) {
+            expr = expressionTree;
+          }
+          if (isRelaxable(expr)) {
+            builder.breakToFillRelaxed(" ");
+          } else {
+            builder.breakToFill(" ");
+          }
           scan(node.getBody(), null);
           builder.close();
         }
@@ -2428,6 +2450,15 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     return visitModifiers(splitModifiers, annotationsDirection, declarationAnnotationBreak);
   }
 
+  private static boolean isOverride(AnnotationTree tree) {
+    return tree.getAnnotationType() instanceof IdentifierTree identifierTree
+        && identifierTree.getName().contentEquals("Override");
+  }
+
+  private static boolean isOverride(AnnotationOrModifier annotationOrModifier) {
+    return annotationOrModifier.isAnnotation() && isOverride(annotationOrModifier.annotation());
+  }
+
   @CheckReturnValue
   private ImmutableList<AnnotationTree> visitModifiers(
       DeclarationModifiersAndTypeAnnotations splitModifiers,
@@ -2441,28 +2472,42 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     builder.open(ZERO);
     boolean afterFirstToken = false;
     boolean lastWasAnnotation = false;
+    AnnotationOrModifier lastAnnotation = null;
     while (!declarationModifiers.isEmpty() && !declarationModifiers.peekFirst().isModifier()) {
       if (afterFirstToken) {
+        boolean vertical = annotationsDirection.isVertical();
+        if (lastAnnotation != null && isOverride(lastAnnotation)) {
+          vertical = false;
+        }
         builder.addAll(
-            annotationsDirection.isVertical()
+            vertical
                 ? forceBreakList(declarationAnnotationBreak)
                 : breakList(declarationAnnotationBreak));
       }
+      lastAnnotation = declarationModifiers.peekFirst();
       formatAnnotationOrModifier(declarationModifiers);
       afterFirstToken = true;
       lastWasAnnotation = true;
     }
     builder.close();
-    ImmutableList<Op> trailingBreak =
-        annotationsDirection.isVertical()
-            ? forceBreakList(declarationAnnotationBreak)
-            : breakList(declarationAnnotationBreak);
-    if (declarationModifiers.isEmpty()) {
-      builder.addAll(trailingBreak);
-      return splitModifiers.typeAnnotations();
-    }
-    if (lastWasAnnotation) {
-      builder.addAll(trailingBreak);
+    boolean trailingVertical = annotationsDirection.isVertical();
+    if (lastAnnotation != null && isOverride(lastAnnotation)) {
+      builder.space();
+      if (declarationModifiers.isEmpty()) {
+        return splitModifiers.typeAnnotations();
+      }
+    } else {
+      ImmutableList<Op> trailingBreak =
+          trailingVertical
+              ? forceBreakList(declarationAnnotationBreak)
+              : breakList(declarationAnnotationBreak);
+      if (declarationModifiers.isEmpty()) {
+        builder.addAll(trailingBreak);
+        return splitModifiers.typeAnnotations();
+      }
+      if (lastWasAnnotation) {
+        builder.addAll(trailingBreak);
+      }
     }
 
     builder.open(ZERO);
@@ -2618,6 +2663,43 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
   }
 
+  private static int dotChainLength(ExpressionTree node0) {
+    ExpressionTree node = node0;
+    int count = 0;
+    LOOP:
+    do {
+      count++;
+      if (node.getKind() == ARRAY_ACCESS) {
+        node = getArrayBase(node);
+      }
+      switch (node.getKind()) {
+        case MEMBER_SELECT -> node = ((MemberSelectTree) node).getExpression();
+        case METHOD_INVOCATION -> node = getMethodReceiver((MethodInvocationTree) node);
+        default -> {
+          break LOOP;
+        }
+      }
+    } while (node != null);
+    return count;
+  }
+
+  private static boolean isChainable(ExpressionTree expr) {
+    if (expr == null) {
+      return false;
+    }
+    return (expr.getKind() == METHOD_INVOCATION || expr.getKind() == MEMBER_SELECT)
+        && dotChainLength(expr) > 2;
+  }
+
+  private static boolean isRelaxable(ExpressionTree expr) {
+    if (expr == null) {
+      return false;
+    }
+    return isChainable(expr)
+        || expr.getKind() == Tree.Kind.SWITCH_EXPRESSION
+        || expr.getKind() == Tree.Kind.LAMBDA_EXPRESSION;
+  }
+
   private boolean isTypeAnnotation(AnnotationTree annotationTree) {
     Tree annotationType = annotationTree.getAnnotationType();
     return switch (annotationType) {
@@ -2748,6 +2830,10 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
     builder.open(ZERO);
     boolean afterFirstToken = false;
+    Doc.FillMode fillMode =
+        hasOnlyShortParameters(receiver, parameters)
+            ? Doc.FillMode.INDEPENDENT
+            : Doc.FillMode.UNIFIED;
     if (receiver.isPresent()) {
       // TODO(user): Use builders.
       declareOne(
@@ -2767,7 +2853,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     for (int i = 0; i < parameters.size(); i++) {
       VariableTree parameter = parameters.get(i);
       if (afterFirstToken) {
-        builder.breakOp(" ");
+        builder.breakOp(fillMode, " ", ZERO);
       }
       visitToDeclare(
           DeclarationKind.PARAMETER,
@@ -3321,7 +3407,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       case METHOD_INVOCATION -> {
         builder.open(tyargIndent);
         MethodInvocationTree methodInvocation = (MethodInvocationTree) expression;
-        addArguments(methodInvocation.getArguments(), indent);
+        addArguments(methodInvocation, methodInvocation.getArguments(), indent);
         builder.close();
       }
       default -> {}
@@ -3385,10 +3471,12 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
    * @param arguments the arguments
    * @param plusIndent the extra indent for the arguments
    */
-  private void addArguments(List<? extends ExpressionTree> arguments, Indent plusIndent) {
+  private void addArguments(
+      ExpressionTree node, List<? extends ExpressionTree> arguments, Indent plusIndent) {
     builder.open(plusIndent);
     token("(");
     if (!arguments.isEmpty()) {
+      int templateIndex = getFormatTemplateIndex(node, arguments);
       if (arguments.size() % 2 == 0 && argumentsAreTabular(arguments) == 2) {
         builder.forcedBreak();
         builder.open(ZERO);
@@ -3409,15 +3497,31 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
           afterFirstToken = true;
         }
         builder.close();
-      } else if (isFormatMethod(arguments)) {
+      } else if (templateIndex != -1) {
         builder.breakOp();
         builder.open(ZERO);
-        scan(arguments.get(0), null);
-        token(",");
-        builder.breakOp(" ");
-        builder.open(ZERO);
-        argList(arguments.subList(1, arguments.size()));
-        builder.close();
+        // Arguments before template
+        for (int i = 0; i < templateIndex; i++) {
+          if (i > 0) {
+            token(",");
+            builder.breakOp(" ");
+          }
+          scan(arguments.get(i), null);
+        }
+        if (templateIndex > 0) {
+          token(",");
+          builder.breakOp(" ");
+        } else {
+          builder.breakOp("");
+        }
+        scan(arguments.get(templateIndex), null);
+        if (templateIndex + 1 < arguments.size()) {
+          token(",");
+          builder.breakOp(Doc.FillMode.INDEPENDENT, " ", ZERO);
+          builder.open(ZERO);
+          argList(arguments.subList(templateIndex + 1, arguments.size()));
+          builder.close();
+        }
         builder.close();
       } else {
         builder.breakOp();
@@ -3428,10 +3532,90 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     builder.close();
   }
 
+  private int getFormatTemplateIndex(
+      ExpressionTree node, List<? extends ExpressionTree> arguments) {
+    if (node == null || node.getKind() != Tree.Kind.METHOD_INVOCATION) {
+      return -1;
+    }
+    MethodInvocationTree methodInvocation = (MethodInvocationTree) node;
+    String methodName = getMethodName(methodInvocation).toString();
+    if (methodName.equals("format")) {
+      if (arguments.size() >= 1 && isStringExpression(arguments.get(0))) {
+        return 0;
+      }
+    }
+    if (methodName.startsWith("check")) {
+      if (arguments.size() >= 2 && isStringExpression(arguments.get(1))) {
+        return 1;
+      }
+    }
+    return -1;
+  }
+
+  private boolean isStringExpression(ExpressionTree node) {
+    if (node == null) {
+      return false;
+    }
+    final boolean[] stringLiteral = {true};
+    new TreeScanner() {
+      @Override
+      public void scan(JCTree tree) {
+        if (tree == null) {
+          return;
+        }
+        switch (tree.getKind()) {
+          case STRING_LITERAL -> {}
+          case PLUS -> super.scan(tree);
+          default -> stringLiteral[0] = false;
+        }
+      }
+    }.scan((JCTree) node);
+    return stringLiteral[0];
+  }
+
+  private static final int MAX_ARG_LENGTH_FOR_FILLING = 40;
+
+  private boolean hasOnlyShortArguments(List<? extends ExpressionTree> expressions) {
+    for (ExpressionTree expression : expressions) {
+      int startPosition = getStartPosition(expression);
+      if (builder.actualSize(
+              startPosition, getEndPosition(expression, getCurrentPath()) - startPosition)
+          >= MAX_ARG_LENGTH_FOR_FILLING) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private boolean hasOnlyShortParameters(
+      Optional<VariableTree> receiver, List<? extends VariableTree> parameters) {
+    if (receiver.isPresent()) {
+      if (getParameterLength(receiver.get()) >= MAX_ARG_LENGTH_FOR_FILLING) {
+        return false;
+      }
+    }
+    return hasOnlyShortParameters(parameters);
+  }
+
+  private boolean hasOnlyShortParameters(List<? extends VariableTree> parameters) {
+    for (VariableTree parameter : parameters) {
+      if (getParameterLength(parameter) >= MAX_ARG_LENGTH_FOR_FILLING) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private int getParameterLength(VariableTree parameter) {
+    int startPosition = getStartPosition(parameter);
+    return builder.actualSize(
+        startPosition, getEndPosition(parameter, getCurrentPath()) - startPosition);
+  }
+
   private void argList(List<? extends ExpressionTree> arguments) {
     builder.open(ZERO);
     boolean afterFirstToken = false;
-    FillMode fillMode = hasOnlyShortItems(arguments) ? FillMode.INDEPENDENT : FillMode.UNIFIED;
+    FillMode fillMode = hasOnlyShortArguments(arguments) ? FillMode.INDEPENDENT : FillMode.UNIFIED;
     for (ExpressionTree argument : arguments) {
       if (afterFirstToken) {
         token(",");
@@ -3462,39 +3646,6 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
    *     arg);
    * }</pre>
    */
-  private boolean isFormatMethod(List<? extends ExpressionTree> arguments) {
-    if (arguments.size() < 2) {
-      return false;
-    }
-    return isStringConcat(arguments.get(0));
-  }
-
-  private static final Pattern FORMAT_SPECIFIER = Pattern.compile("%|\\{[0-9]\\}");
-
-  private boolean isStringConcat(ExpressionTree first) {
-    final boolean[] stringLiteral = {true};
-    final boolean[] formatString = {false};
-    new TreeScanner() {
-      @Override
-      public void scan(JCTree tree) {
-        if (tree == null) {
-          return;
-        }
-        switch (tree.getKind()) {
-          case STRING_LITERAL -> {}
-          case PLUS -> super.scan(tree);
-          default -> stringLiteral[0] = false;
-        }
-        if (tree.getKind() == STRING_LITERAL) {
-          Object value = ((LiteralTree) tree).getValue();
-          if (value instanceof String string && FORMAT_SPECIFIER.matcher(string).find()) {
-            formatString[0] = true;
-          }
-        }
-      }
-    }.scan((JCTree) first);
-    return stringLiteral[0] && formatString[0];
-  }
 
   /** Returns the number of columns if the arguments arg laid out in a grid, or else {@code -1}. */
   private int argumentsAreTabular(List<? extends ExpressionTree> arguments) {
@@ -3713,9 +3864,13 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
           initializer.get().accept(this, null);
           builder.close();
         } else {
+          if (isRelaxable(initializer.get())) {
+            builder.breakToFillRelaxed(" ");
+          } else {
+            builder.breakToFill(" ");
+          }
           builder.open(Indent.If.make(typeBreak, plusFour, ZERO));
           {
-            builder.breakToFill(" ");
             scan(initializer.get(), null);
           }
           builder.close();

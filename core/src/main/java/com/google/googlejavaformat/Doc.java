@@ -60,7 +60,13 @@ public abstract class Doc {
      * A {@code FORCED} {@link Break} will always be broken, and a {@link Level} it appears in will
      * not fit on one line.
      */
-    FORCED
+    FORCED,
+
+    /**
+     * A {@code RELAXED} {@link Break} behaves like an {@code INDEPENDENT} break, but allows its
+     * child Level to wrap internally instead of forcing this break.
+     */
+    RELAXED
   }
 
   /**
@@ -260,15 +266,100 @@ public abstract class Doc {
 
       state =
           computeBreakAndSplit(
-              commentsHelper, maxWidth, state, /* optBreakDoc= */ Optional.empty(), splits.get(0));
+              commentsHelper,
+              maxWidth,
+              state,
+              /* optBreakDoc= */ Optional.empty(),
+              splits.get(0),
+              plusIndent);
 
       // Handle following breaks and split.
       for (int i = 0; i < breaks.size(); i++) {
         state =
             computeBreakAndSplit(
-                commentsHelper, maxWidth, state, Optional.of(breaks.get(i)), splits.get(i + 1));
+                commentsHelper,
+                maxWidth,
+                state,
+                Optional.of(breaks.get(i)),
+                splits.get(i + 1),
+                plusIndent);
       }
       return state;
+    }
+
+    private static boolean allowInternalWrapping(Optional<Break> optBreakDoc, List<Doc> split) {
+      if (optBreakDoc.isEmpty()) {
+        return false;
+      }
+      Break b = optBreakDoc.get();
+      if (b.fillMode == FillMode.RELAXED) {
+        for (Doc doc : split) {
+          if (hasInternalBreaks(doc)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    private static boolean hasInternalBreaks(Doc doc) {
+      if (doc instanceof Break) {
+        return true;
+      }
+      if (doc instanceof Level level) {
+        for (Doc child : level.docs) {
+          if (hasInternalBreaks(child)) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    private static final class WidthResult {
+      final int width;
+      final boolean stopped;
+
+      WidthResult(int width, boolean stopped) {
+        this.width = width;
+        this.stopped = stopped;
+      }
+    }
+
+    private static WidthResult getHeadWidth(Doc doc) {
+      if (doc instanceof Break b) {
+        if (b.fillMode == FillMode.UNIFIED) {
+          return new WidthResult(0, true);
+        }
+        return new WidthResult(b.getWidth(), false);
+      }
+      if (doc instanceof Level level) {
+        if (!hasInternalBreaks(level)) {
+          return new WidthResult(level.getWidth(), false);
+        }
+        int width = 0;
+        for (Doc child : level.docs) {
+          WidthResult childResult = getHeadWidth(child);
+          width += childResult.width;
+          if (childResult.stopped) {
+            return new WidthResult(width, true);
+          }
+        }
+        return new WidthResult(width, false);
+      }
+      return new WidthResult(doc.getWidth(), false);
+    }
+
+    private static int getHeadWidth(List<Doc> split) {
+      int width = 0;
+      for (Doc doc : split) {
+        WidthResult result = getHeadWidth(doc);
+        width += result.width;
+        if (result.stopped) {
+          break;
+        }
+      }
+      return width;
     }
 
     /** Lay out a Break-separated group of Docs in the current Level. */
@@ -277,19 +368,45 @@ public abstract class Doc {
         int maxWidth,
         State state,
         Optional<Break> optBreakDoc,
-        List<Doc> split) {
+        List<Doc> split,
+        Indent parentPlusIndent) {
       int breakWidth = optBreakDoc.isPresent() ? optBreakDoc.get().getWidth() : 0;
       int splitWidth = getWidth(split);
       boolean shouldBreak =
           (optBreakDoc.isPresent() && optBreakDoc.get().fillMode == FillMode.UNIFIED)
               || state.mustBreak
-              || state.column + breakWidth + splitWidth > maxWidth;
+              || (state.column + breakWidth + splitWidth > maxWidth
+                  && !(optBreakDoc.isPresent()
+                      && optBreakDoc.get().fillMode == FillMode.RELAXED
+                      && allowInternalWrapping(optBreakDoc, split)));
+
+      if (optBreakDoc.isPresent()
+          && optBreakDoc.get().fillMode == FillMode.RELAXED
+          && !shouldBreak) {
+        int headWidth = getHeadWidth(split);
+        boolean fitsOnSameLine = state.column + breakWidth + headWidth <= maxWidth;
+        int nextIndent = Math.max(state.lastIndent + optBreakDoc.get().plusIndent.eval(), 0);
+        boolean fitsOnNextLine = nextIndent + headWidth <= maxWidth;
+        if (!fitsOnSameLine && fitsOnNextLine) {
+          shouldBreak = true;
+        }
+      }
 
       if (optBreakDoc.isPresent()) {
         state = optBreakDoc.get().computeBreaks(state, state.lastIndent, shouldBreak);
       }
       boolean enoughRoom = state.column + splitWidth <= maxWidth;
-      state = computeSplit(commentsHelper, maxWidth, split, state.withMustBreak(false));
+
+      State splitState = state.withMustBreak(false);
+      if (optBreakDoc.isPresent()
+          && !shouldBreak
+          && optBreakDoc.get().fillMode == FillMode.RELAXED) {
+        int shiftedIndent = Math.max(splitState.indent - parentPlusIndent.eval(), 0);
+        splitState =
+            new State(shiftedIndent, shiftedIndent, splitState.column, splitState.mustBreak);
+      }
+
+      state = computeSplit(commentsHelper, maxWidth, split, splitState);
       if (!enoughRoom) {
         state = state.withMustBreak(true); // Break after, too.
       }
