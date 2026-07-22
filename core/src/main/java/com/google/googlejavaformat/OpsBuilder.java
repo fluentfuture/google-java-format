@@ -107,13 +107,11 @@ public final class OpsBuilder {
         this.wanted = wanted;
       }
 
-      @Override
-      public Optional<Boolean> wanted() {
+      @Override public Optional<Boolean> wanted() {
         return wanted;
       }
 
-      @Override
-      public BlankLineWanted merge(BlankLineWanted other) {
+      @Override public BlankLineWanted merge(BlankLineWanted other) {
         return this;
       }
     }
@@ -126,8 +124,7 @@ public final class OpsBuilder {
         this.tags = ImmutableList.copyOf(tags);
       }
 
-      @Override
-      public Optional<Boolean> wanted() {
+      @Override public Optional<Boolean> wanted() {
         for (BreakTag tag : tags) {
           if (tag.wasBreakTaken()) {
             return Optional.of(true);
@@ -136,8 +133,7 @@ public final class OpsBuilder {
         return Optional.empty();
       }
 
-      @Override
-      public BlankLineWanted merge(BlankLineWanted other) {
+      @Override public BlankLineWanted merge(BlankLineWanted other) {
         if (!(other instanceof ConditionalBlankLine conditionalBlankLine)) {
           return other;
         }
@@ -244,9 +240,7 @@ public final class OpsBuilder {
         Input.Token token = tokens.get(tokenI++);
         add(
             Doc.Token.make(
-                token,
-                Doc.Token.RealOrImaginary.IMAGINARY,
-                ZERO,
+                token, Doc.Token.RealOrImaginary.IMAGINARY, ZERO,
                 /* breakAndIndentTrailingComment= */ Optional.empty()));
       }
     }
@@ -291,8 +285,7 @@ public final class OpsBuilder {
     Preconditions.checkState(
         tokens.get(tokenI).getTok().getPosition() == startPosition,
         "Expected the current token to be at position %s, found: %s",
-        startPosition,
-        tokens.get(tokenI));
+        startPosition, tokens.get(tokenI));
     ImmutableList.Builder<Tok> result = ImmutableList.builder();
     for (int idx = tokenI; idx < tokens.size(); idx++) {
       Tok tok = tokens.get(idx).getTok();
@@ -312,24 +305,18 @@ public final class OpsBuilder {
    */
   public final void guessToken(String token) {
     token(
-        token,
-        Doc.Token.RealOrImaginary.IMAGINARY,
-        ZERO,
+        token, Doc.Token.RealOrImaginary.IMAGINARY, ZERO,
         /* breakAndIndentTrailingComment= */ Optional.empty());
   }
 
   public final void token(
-      String token,
-      Doc.Token.RealOrImaginary realOrImaginary,
-      Indent plusIndentCommentsBefore,
+      String token, Doc.Token.RealOrImaginary realOrImaginary, Indent plusIndentCommentsBefore,
       Optional<Indent> breakAndIndentTrailingComment) {
     ImmutableList<? extends Input.Token> tokens = input.getTokens();
     if (token.equals(peekToken().orElse(null))) { // Found the input token. Output it.
       add(
           Doc.Token.make(
-              tokens.get(tokenI++),
-              Doc.Token.RealOrImaginary.REAL,
-              plusIndentCommentsBefore,
+              tokens.get(tokenI++), Doc.Token.RealOrImaginary.REAL, plusIndentCommentsBefore,
               breakAndIndentTrailingComment));
     } else {
       /*
@@ -355,9 +342,7 @@ public final class OpsBuilder {
     int opN = op.length();
     for (int i = 0; i < opN; i++) {
       token(
-          op.substring(i, i + 1),
-          Doc.Token.RealOrImaginary.REAL,
-          ZERO,
+          op.substring(i, i + 1), Doc.Token.RealOrImaginary.REAL, ZERO,
           /* breakAndIndentTrailingComment= */ Optional.empty());
     }
   }
@@ -438,6 +423,11 @@ public final class OpsBuilder {
     breakOp(fillMode, flat, plusIndent, /* optionalTag= */ Optional.empty());
   }
 
+  public final void breakOp(
+      Doc.FillMode fillMode, String flat, Indent plusIndent, boolean isMethodCall) {
+    breakOp(fillMode, flat, plusIndent, /* optionalTag= */ Optional.empty(), isMethodCall);
+  }
+
   /**
    * Emit a generic {@link Doc.Break}.
    *
@@ -448,7 +438,13 @@ public final class OpsBuilder {
    */
   public final void breakOp(
       Doc.FillMode fillMode, String flat, Indent plusIndent, Optional<BreakTag> optionalTag) {
-    add(Doc.Break.make(fillMode, flat, plusIndent, optionalTag));
+    add(Doc.Break.make(fillMode, flat, plusIndent, optionalTag, false));
+  }
+
+  public final void breakOp(
+      Doc.FillMode fillMode, String flat, Indent plusIndent, Optional<BreakTag> optionalTag,
+      boolean isMethodCall) {
+    add(Doc.Break.make(fillMode, flat, plusIndent, optionalTag, isMethodCall));
   }
 
   private int lastPartialFormatBoundary = -1;
@@ -536,8 +532,7 @@ public final class OpsBuilder {
                   j,
                   Doc.Break.make(
                       tokBefore.isSlashSlashComment() ? Doc.FillMode.FORCED : Doc.FillMode.UNIFIED,
-                      "",
-                      tokenOp.getPlusIndentCommentsBefore()));
+                      "", tokenOp.getPlusIndentCommentsBefore()));
               tokOps.putAll(j, makeComment(tokBefore));
               space = tokBefore.isSlashStarComment();
               newlines = 0;
@@ -570,8 +565,7 @@ public final class OpsBuilder {
                 tokOps.put(
                     k + 1,
                     Doc.Break.make(
-                        Doc.FillMode.FORCED,
-                        "",
+                        Doc.FillMode.FORCED, "",
                         tokenOp.breakAndIndentTrailingComment().orElse(Const.ZERO)));
               } else {
                 tokOps.put(k + 1, SPACE);
@@ -653,8 +647,7 @@ public final class OpsBuilder {
         : ImmutableList.of(Doc.Tok.make(comment), Doc.Break.makeForced());
   }
 
-  @Override
-  public final String toString() {
+  @Override public final String toString() {
     return MoreObjects.toStringHelper(this)
         .add("input", input)
         .add("ops", ops)

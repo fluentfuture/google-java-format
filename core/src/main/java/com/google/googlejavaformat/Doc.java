@@ -80,17 +80,22 @@ public abstract class Doc {
   public static final int MAX_LINE_WIDTH = 1000;
 
   public record State(
-      int lastIndent, int indent, int column, boolean mustBreak, int relaxedUnindent) {
+      int lastIndent, int indent, int column, boolean mustBreak, int relaxedUnindent,
+      boolean parentWasFlat) {
     public State(int indent0, int column0) {
-      this(indent0, indent0, column0, false, 0);
+      this(indent0, indent0, column0, false, 0, false);
     }
 
     State withColumn(int column) {
-      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent);
+      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent, parentWasFlat);
     }
 
     State withMustBreak(boolean mustBreak) {
-      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent);
+      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent, parentWasFlat);
+    }
+
+    State withParentWasFlat(boolean parentWasFlat) {
+      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent, parentWasFlat);
     }
   }
 
@@ -207,13 +212,11 @@ public abstract class Doc {
       docs.add(doc);
     }
 
-    @Override
-    int computeWidth() {
+    @Override int computeWidth() {
       return getWidth(docs);
     }
 
-    @Override
-    String computeFlat() {
+    @Override String computeFlat() {
       StringBuilder builder = new StringBuilder();
       for (Doc doc : docs) {
         builder.append(doc.getFlat());
@@ -221,8 +224,7 @@ public abstract class Doc {
       return builder.toString();
     }
 
-    @Override
-    Range<Integer> computeRange() {
+    @Override Range<Integer> computeRange() {
       Range<Integer> docRange = EMPTY_RANGE;
       for (Doc doc : docs) {
         docRange = union(docRange, doc.range());
@@ -246,23 +248,18 @@ public abstract class Doc {
     /** {@link Break}s between {@link Doc}s in the current {@link Level}. */
     List<Break> breaks = new ArrayList<>();
 
-    @Override
-    public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
+    @Override public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
       int thisWidth = getWidth();
       if (state.column + thisWidth <= maxWidth) {
         oneLine = true;
         return state.withColumn(state.column + thisWidth);
       }
-      State broken =
-          computeBroken(
-              commentsHelper,
-              maxWidth,
-              new State(
-                  state.indent + plusIndent.eval(),
-                  state.indent + plusIndent.eval(),
-                  state.column,
-                  false,
-                  state.relaxedUnindent));
+      State broken = computeBroken(
+          commentsHelper,
+          maxWidth,
+          new State(
+              state.indent + plusIndent.eval(), state.indent + plusIndent.eval(), state.column,
+              false, state.relaxedUnindent, state.parentWasFlat));
       return state.withColumn(broken.column);
     }
 
@@ -284,27 +281,15 @@ public abstract class Doc {
     private State computeBroken(CommentsHelper commentsHelper, int maxWidth, State state) {
       splitByBreaks(docs, splits, breaks);
 
-      state =
-          computeBreakAndSplit(
-              commentsHelper,
-              maxWidth,
-              state,
-              /* optBreakDoc= */ Optional.empty(),
-              splits.get(0),
-              plusIndent,
-              this);
+      state = computeBreakAndSplit(
+          commentsHelper, maxWidth, state,
+          /* optBreakDoc= */ Optional.empty(), splits.get(0), plusIndent, this);
 
       // Handle following breaks and split.
       for (int i = 0; i < breaks.size(); i++) {
-        state =
-            computeBreakAndSplit(
-                commentsHelper,
-                maxWidth,
-                state,
-                Optional.of(breaks.get(i)),
-                splits.get(i + 1),
-                plusIndent,
-                this);
+        state = computeBreakAndSplit(
+            commentsHelper, maxWidth, state, Optional.of(breaks.get(i)), splits.get(i + 1),
+            plusIndent, this);
       }
       return state;
     }
@@ -539,24 +524,33 @@ public abstract class Doc {
 
     /** Lay out a Break-separated group of Docs in the current Level. */
     private static State computeBreakAndSplit(
-        CommentsHelper commentsHelper,
-        int maxWidth,
-        State state,
-        Optional<Break> optBreakDoc,
-        List<Doc> split,
-        Indent parentPlusIndent,
-        Level currentLevel) {
+        CommentsHelper commentsHelper, int maxWidth, State state, Optional<Break> optBreakDoc,
+        List<Doc> split, Indent parentPlusIndent, Level currentLevel) {
       int breakWidth = optBreakDoc.isPresent() ? optBreakDoc.get().getWidth() : 0;
       int splitWidth = getWidth(split);
 
+      boolean isUnified = optBreakDoc.isPresent() && optBreakDoc.get().fillMode == FillMode.UNIFIED;
+      if (isUnified) {
+        int idx = currentLevel.docs.indexOf(optBreakDoc.get());
+        if (idx != -1 && isBuilderBreak(currentLevel, idx)) {
+          isUnified = false;
+        }
+      }
+
       boolean shouldBreak =
-          (optBreakDoc.isPresent() && optBreakDoc.get().fillMode == FillMode.UNIFIED)
+          isUnified
               || state.mustBreak
               || (state.column + breakWidth + splitWidth > maxWidth
                   && !(optBreakDoc.isPresent()
                       && optBreakDoc.get().fillMode == FillMode.RELAXED
                       && allowInternalWrapping(optBreakDoc, split)));
 
+      if (optBreakDoc.isPresent()
+          && optBreakDoc.get().fillMode == FillMode.RELAXED
+          && optBreakDoc.get().isMethodCall()
+          && state.parentWasFlat) {
+        shouldBreak = true;
+      }
       if (optBreakDoc.isPresent()
           && optBreakDoc.get().fillMode == FillMode.RELAXED
           && !shouldBreak) {
@@ -592,15 +586,30 @@ public abstract class Doc {
           accumulatedWidthNextLine += child.getWidth();
         }
 
-        if ((!headFitsOnSameLine && headFitsOnNextLine)
-            || firstChildBrokenOnSameLineButFlatOnNextLine
-            || (!entireFitsOnSameLine && entireFitsOnNextLine)) {
-          shouldBreak = true;
+        if (entireFitsOnNextLine) {
+          if ((!headFitsOnSameLine && headFitsOnNextLine)
+              || firstChildBrokenOnSameLineButFlatOnNextLine
+              || (!entireFitsOnSameLine && entireFitsOnNextLine)) {
+            shouldBreak = true;
+          }
+        } else {
+          int headerWidthSameLine = getHeadWidthFlat(split, state.column + breakWidth).width;
+          int headerWidthNextLine = getHeadWidthFlat(split, nextIndent).width;
+          boolean headerFitsOnSameLine =
+              state.column + breakWidth + headerWidthSameLine <= maxWidth;
+          boolean headerFitsOnNextLine = nextIndent + headerWidthNextLine <= maxWidth;
+          if ((!headerFitsOnSameLine && headerFitsOnNextLine)
+              || firstChildBrokenOnSameLineButFlatOnNextLine) {
+            shouldBreak = true;
+          }
         }
       }
 
       if (optBreakDoc.isPresent()) {
         state = optBreakDoc.get().computeBreaks(state, state.lastIndent, shouldBreak);
+        if (shouldBreak) {
+          state = state.withParentWasFlat(false);
+        }
       }
       boolean enoughRoom = state.column + splitWidth <= maxWidth;
 
@@ -608,6 +617,9 @@ public abstract class Doc {
       if (optBreakDoc.isPresent()
           && !shouldBreak
           && optBreakDoc.get().fillMode == FillMode.RELAXED) {
+        if (!enoughRoom) {
+          splitState = splitState.withParentWasFlat(true);
+        }
         int parentPlus = parentPlusIndent.eval();
         boolean isMethodCall = false;
         if (currentLevel.getPlusIndent().eval() == 0) {
@@ -625,13 +637,9 @@ public abstract class Doc {
           shiftedIndent = Math.max(splitState.indent - parentPlus, 0);
         }
         int newRelaxedUnindent = splitState.relaxedUnindent + parentPlus;
-        splitState =
-            new State(
-                shiftedIndent,
-                shiftedIndent,
-                splitState.column,
-                splitState.mustBreak,
-                newRelaxedUnindent);
+        splitState = new State(
+            shiftedIndent, shiftedIndent, splitState.column, splitState.mustBreak,
+            newRelaxedUnindent, splitState.parentWasFlat);
       }
 
       state = computeSplit(commentsHelper, maxWidth, split, splitState);
@@ -649,8 +657,7 @@ public abstract class Doc {
       return state;
     }
 
-    @Override
-    public void write(Output output) {
+    @Override public void write(Output output) {
       if (oneLine) {
         output.append(getFlat(), range()); // This is defined because width is finite.
       } else {
@@ -694,12 +701,101 @@ public abstract class Doc {
       return x.isEmpty() ? y : y.isEmpty() ? x : x.span(y).canonical(INTEGERS);
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this)
           .add("plusIndent", plusIndent)
           .add("docs", docs)
           .toString();
+    }
+
+    private static WidthResult getHeadWidthFlat(Doc doc, int column) {
+      if (doc instanceof Break b) {
+        if (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT) {
+          return new WidthResult(0, true);
+        }
+        return new WidthResult(b.getWidth(), false);
+      }
+      if (doc instanceof Level level) {
+        if (column + level.getWidth() <= 100) {
+          return new WidthResult(level.getWidth(), false);
+        }
+        int width = 0;
+        for (int i = 0; i < level.docs.size(); i++) {
+          Doc child = level.docs.get(i);
+          if (child instanceof Break b
+              && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT)) {
+            if (isDotBreak(level, i)) {
+              if (isBuilderBreak(level, i)) {
+                continue;
+              }
+              break;
+            }
+          }
+          WidthResult childResult = getHeadWidthFlat(child, column + width);
+          width += childResult.width;
+          if (childResult.stopped) {
+            return new WidthResult(width, true);
+          }
+        }
+        return new WidthResult(width, false);
+      }
+      return new WidthResult(doc.getWidth(), false);
+    }
+
+    private static WidthResult getHeadWidthFlat(List<Doc> docs, int column) {
+      int width = 0;
+      for (int i = 0; i < docs.size(); i++) {
+        Doc doc = docs.get(i);
+        if (doc instanceof Break b
+            && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT)) {
+          if (isDotBreakList(docs, i)) {
+            if (isBuilderBreakList(docs, i)) {
+              continue;
+            }
+            break;
+          }
+        }
+        WidthResult result = getHeadWidthFlat(doc, column + width);
+        width += result.width;
+        if (result.stopped) {
+          return new WidthResult(width, true);
+        }
+      }
+      return new WidthResult(width, false);
+    }
+
+    private static boolean isDotBreak(Level level, int breakIndex) {
+      return breakIndex + 1 < level.docs.size()
+          && level.docs.get(breakIndex + 1) instanceof Token t
+          && ".".equals(t.getToken().getTok().getOriginalText());
+    }
+
+    private static boolean isBuilderBreak(Level level, int breakIndex) {
+      if (breakIndex + 2 < level.docs.size()) {
+        Doc name = level.docs.get(breakIndex + 2);
+        if (name instanceof Token tName) {
+          String methodName = tName.getToken().getTok().getOriginalText();
+          return "newBuilder".equals(methodName) || "builder".equals(methodName);
+        }
+      }
+      return false;
+    }
+
+    private static boolean isDotBreakList(List<Doc> docs, int breakIndex) {
+      return breakIndex + 1 < docs.size()
+          && docs.get(breakIndex + 1) instanceof Token t
+          && ".".equals(t.getToken().getTok().getOriginalText());
+    }
+
+    private static boolean isBuilderBreakList(List<Doc> docs, int breakIndex) {
+      if (breakIndex + 2 < docs.size()) {
+        Doc name = docs.get(breakIndex + 2);
+        if (name instanceof Token tName) {
+          String methodName = tName.getToken().getTok().getOriginalText();
+          return "newBuilder".equals(methodName) || "builder".equals(methodName);
+        }
+      }
+      return false;
     }
   }
 
@@ -725,9 +821,7 @@ public abstract class Doc {
     }
 
     private Token(
-        Input.Token token,
-        RealOrImaginary realOrImaginary,
-        Indent plusIndentCommentsBefore,
+        Input.Token token, RealOrImaginary realOrImaginary, Indent plusIndentCommentsBefore,
         Optional<Indent> breakAndIndentTrailingComment) {
       this.token = token;
       this.realOrImaginary = realOrImaginary;
@@ -759,10 +853,8 @@ public abstract class Doc {
      * @return the new {@code Token}
      */
     static Op make(
-        Input.Token token,
-        Doc.Token.RealOrImaginary realOrImaginary,
-        Indent plusIndentCommentsBefore,
-        Optional<Indent> breakAndIndentTrailingComment) {
+        Input.Token token, Doc.Token.RealOrImaginary realOrImaginary,
+        Indent plusIndentCommentsBefore, Optional<Indent> breakAndIndentTrailingComment) {
       return new Token(
           token, realOrImaginary, plusIndentCommentsBefore, breakAndIndentTrailingComment);
     }
@@ -785,40 +877,33 @@ public abstract class Doc {
       return realOrImaginary;
     }
 
-    @Override
-    public void add(DocBuilder builder) {
+    @Override public void add(DocBuilder builder) {
       builder.add(this);
     }
 
-    @Override
-    int computeWidth() {
+    @Override int computeWidth() {
       int idx = Newlines.firstBreak(tok().getOriginalText());
       return (idx >= 0) ? MAX_LINE_WIDTH : tok().length();
     }
 
-    @Override
-    String computeFlat() {
+    @Override String computeFlat() {
       return token.getTok().getOriginalText();
     }
 
-    @Override
-    Range<Integer> computeRange() {
+    @Override Range<Integer> computeRange() {
       return Range.singleton(token.getTok().getIndex()).canonical(INTEGERS);
     }
 
-    @Override
-    public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
+    @Override public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
       return state.withColumn(state.column + computeWidth());
     }
 
-    @Override
-    public void write(Output output) {
+    @Override public void write(Output output) {
       String text = token.getTok().getOriginalText();
       output.append(text, range());
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this)
           .add("token", token)
           .add("realOrImaginary", realOrImaginary)
@@ -842,38 +927,31 @@ public abstract class Doc {
       return SPACE;
     }
 
-    @Override
-    public void add(DocBuilder builder) {
+    @Override public void add(DocBuilder builder) {
       builder.add(this);
     }
 
-    @Override
-    int computeWidth() {
+    @Override int computeWidth() {
       return 1;
     }
 
-    @Override
-    String computeFlat() {
+    @Override String computeFlat() {
       return " ";
     }
 
-    @Override
-    Range<Integer> computeRange() {
+    @Override Range<Integer> computeRange() {
       return EMPTY_RANGE;
     }
 
-    @Override
-    public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
+    @Override public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
       return state.withColumn(state.column + 1);
     }
 
-    @Override
-    public void write(Output output) {
+    @Override public void write(Output output) {
       output.append(" ", range());
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this).toString();
     }
   }
@@ -884,12 +962,16 @@ public abstract class Doc {
     private final String flat;
     private final Indent plusIndent;
     private final Optional<BreakTag> optTag;
+    private final boolean isMethodCall;
 
-    private Break(FillMode fillMode, String flat, Indent plusIndent, Optional<BreakTag> optTag) {
+    private Break(
+        FillMode fillMode, String flat, Indent plusIndent, Optional<BreakTag> optTag,
+        boolean isMethodCall) {
       this.fillMode = fillMode;
       this.flat = flat;
       this.plusIndent = plusIndent;
       this.optTag = optTag;
+      this.isMethodCall = isMethodCall;
     }
 
     /**
@@ -901,7 +983,12 @@ public abstract class Doc {
      * @return the new {@code Break}
      */
     public static Break make(FillMode fillMode, String flat, Indent plusIndent) {
-      return new Break(fillMode, flat, plusIndent, /* optTag= */ Optional.empty());
+      return new Break(fillMode, flat, plusIndent, /* optTag= */ Optional.empty(), false);
+    }
+
+    public static Break make(
+        FillMode fillMode, String flat, Indent plusIndent, boolean isMethodCall) {
+      return new Break(fillMode, flat, plusIndent, /* optTag= */ Optional.empty(), isMethodCall);
     }
 
     /**
@@ -915,7 +1002,13 @@ public abstract class Doc {
      */
     public static Break make(
         FillMode fillMode, String flat, Indent plusIndent, Optional<BreakTag> optTag) {
-      return new Break(fillMode, flat, plusIndent, optTag);
+      return new Break(fillMode, flat, plusIndent, optTag, false);
+    }
+
+    public static Break make(
+        FillMode fillMode, String flat, Indent plusIndent, Optional<BreakTag> optTag,
+        boolean isMethodCall) {
+      return new Break(fillMode, flat, plusIndent, optTag, isMethodCall);
     }
 
     /**
@@ -945,23 +1038,23 @@ public abstract class Doc {
       return fillMode == FillMode.FORCED;
     }
 
-    @Override
-    public void add(DocBuilder builder) {
+    boolean isMethodCall() {
+      return isMethodCall;
+    }
+
+    @Override public void add(DocBuilder builder) {
       builder.breakDoc(this);
     }
 
-    @Override
-    int computeWidth() {
+    @Override int computeWidth() {
       return isForced() ? MAX_LINE_WIDTH : flat.length();
     }
 
-    @Override
-    String computeFlat() {
+    @Override String computeFlat() {
       return flat;
     }
 
-    @Override
-    Range<Integer> computeRange() {
+    @Override Range<Integer> computeRange() {
       return EMPTY_RANGE;
     }
 
@@ -987,8 +1080,7 @@ public abstract class Doc {
       }
     }
 
-    @Override
-    public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
+    @Override public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
       // Updating the state for {@link Break}s requires deciding if the break
       // should be taken.
       // TODO(cushon): this hierarchy is wrong, create a separate interface
@@ -996,8 +1088,7 @@ public abstract class Doc {
       throw new UnsupportedOperationException("Did you mean computeBreaks(State, int, boolean)?");
     }
 
-    @Override
-    public void write(Output output) {
+    @Override public void write(Output output) {
       if (broken) {
         output.append("\n", EMPTY_RANGE);
         output.indent(newIndent);
@@ -1006,8 +1097,7 @@ public abstract class Doc {
       }
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this)
           .add("fillMode", fillMode)
           .add("flat", flat)
@@ -1035,13 +1125,11 @@ public abstract class Doc {
       return new Tok(tok);
     }
 
-    @Override
-    public void add(DocBuilder builder) {
+    @Override public void add(DocBuilder builder) {
       builder.add(this);
     }
 
-    @Override
-    int computeWidth() {
+    @Override int computeWidth() {
       int idx = Newlines.firstBreak(tok.getOriginalText());
       // only count the first line of multi-line block comments
       if (tok.isComment()) {
@@ -1057,8 +1145,7 @@ public abstract class Doc {
       return idx != -1 ? MAX_LINE_WIDTH : tok.length();
     }
 
-    @Override
-    String computeFlat() {
+    @Override String computeFlat() {
       // TODO(cushon): commentsHelper.rewrite doesn't get called for spans that fit in a single
       // line. That's fine for multi-line comment reflowing, but problematic for adding missing
       // spaces in line comments.
@@ -1068,27 +1155,23 @@ public abstract class Doc {
       return reformatParameterComment(tok).orElse(tok.getOriginalText());
     }
 
-    @Override
-    Range<Integer> computeRange() {
+    @Override Range<Integer> computeRange() {
       return Range.singleton(tok.getIndex()).canonical(INTEGERS);
     }
 
     String text;
 
-    @Override
-    public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
+    @Override public State computeBreaks(CommentsHelper commentsHelper, int maxWidth, State state) {
       text = commentsHelper.rewrite(tok, maxWidth, state.column);
       int firstLineLength = text.length() - Iterators.getLast(Newlines.lineOffsetIterator(text));
       return state.withColumn(state.column + firstLineLength);
     }
 
-    @Override
-    public void write(Output output) {
+    @Override public void write(Output output) {
       output.append(text, range());
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this).add("tok", tok).toString();
     }
   }

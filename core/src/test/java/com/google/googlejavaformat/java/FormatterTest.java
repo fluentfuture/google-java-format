@@ -454,8 +454,8 @@ public final class FormatterTest {
         "com/google/googlejavaformat/java/testimports/A.formatting-and-import-sorting");
   }
 
-  private void importOrdering(String sortArg, String outputResourceName)
-      throws IOException, UsageException {
+  private void importOrdering(
+      String sortArg, String outputResourceName) throws IOException, UsageException {
     Path tmpdir = testFolder.newFolder().toPath();
     Path path = tmpdir.resolve("Foo.java");
 
@@ -813,12 +813,34 @@ class T {
         """;
     assertThat(new Formatter().formatSource(inputToMacro)).isEqualTo(expectedToMacro);
 
+    // 8. Method call with 1 argument that is a lambda must break after ( (stick to rectangular
+    // rule)
+    String inputLambdaArg =
+        """
+        class T {
+          void f() {
+            addArgs(t -> new CelExpr.Macro.FilterMap(t, v, c1, c2, someOtherVeryLongArgumentNameToForceWrapping));
+          }
+        }
+        """;
+    String expectedLambdaArg =
+        """
+        class T {
+          void f() {
+            addArgs(
+                t -> new CelExpr.Macro.FilterMap(
+                    t, v, c1, c2, someOtherVeryLongArgumentNameToForceWrapping));
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputLambdaArg)).isEqualTo(expectedLambdaArg);
+
     // 7. Head section does not fit on same line but fits on next line
     String inputForceBreak =
         """
         class T {
           void f() {
-            Foo foo = SomeVeryLongClassNameToNotFitOnSameLine3456789012345678901234567890123456789.newBuilder().setProp(val).build();
+            Foo foo = AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.newBuilder().setProp(val).build();
           }
         }
         """;
@@ -827,7 +849,7 @@ class T {
         class T {
           void f() {
             Foo foo =
-                SomeVeryLongClassNameToNotFitOnSameLine3456789012345678901234567890123456789.newBuilder()
+                AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA.newBuilder()
                     .setProp(val)
                     .build();
           }
@@ -1030,6 +1052,67 @@ class T {
         }
         """;
     assertThat(new Formatter().formatSource(inputFormat)).isEqualTo(expectedFormat);
+
+    // 15. Map/ImmutableMap pairwise formatting
+    String inputMapOf =
+        """
+        class T {
+          void f() {
+            Map<String, Integer> map = Map.of("keyOne", 1, "keyTwo", 2, "keyThree", 3, "keyFour", 4, "keyFive", 5);
+            ImmutableMap<String, Integer> map2 = ImmutableMap.of("keyOne", 1, "keyTwo", 2, "keyThree", 3, "keyFour", 4);
+          }
+        }
+        """;
+    String expectedMapOf =
+        """
+        class T {
+          void f() {
+            Map<String, Integer> map = Map.of(
+                "keyOne", 1,
+                "keyTwo", 2,
+                "keyThree", 3,
+                "keyFour", 4,
+                "keyFive", 5);
+            ImmutableMap<String, Integer> map2 = ImmutableMap.of(
+                "keyOne", 1,
+                "keyTwo", 2,
+                "keyThree", 3,
+                "keyFour", 4);
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputMapOf)).isEqualTo(expectedMapOf);
+
+    // 16. Nested builder chain within a broken outer builder chain must keep its header promoted
+    String inputNestedBuilder =
+        """
+        class T {
+          void f() {
+            Expr loopStep = Expr.newBuilder()
+                .setId(stepId)
+                .setCallExpr(Expr.Call.newBuilder()
+                    .setFunction("_+_")
+                    .addArgs(Expr.newBuilder()
+                        .setId(accuId1)
+                        .setIdentExpr(Expr.Ident.newBuilder().setName("@result"))));
+          }
+        }
+        """;
+    String expectedNestedBuilder =
+        """
+        class T {
+          void f() {
+            Expr loopStep = Expr.newBuilder()
+                .setId(stepId)
+                .setCallExpr(Expr.Call.newBuilder()
+                    .setFunction("_+_")
+                    .addArgs(Expr.newBuilder()
+                        .setId(accuId1)
+                        .setIdentExpr(Expr.Ident.newBuilder().setName("@result"))));
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputNestedBuilder)).isEqualTo(expectedNestedBuilder);
   }
 
   @Test
