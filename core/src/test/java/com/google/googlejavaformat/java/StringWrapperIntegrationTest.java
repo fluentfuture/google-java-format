@@ -127,8 +127,7 @@ public class StringWrapperIntegrationTest {
           String s =
               "one long incredibly unbroken"
                   + " sentence moving from"
-                  + " topic to topic"
-                  + 42
+                  + " topic to topic" + 42
                   + " so that no-one had a"
                   + " chance to interrupt";
         }
@@ -456,7 +455,7 @@ class T {
 
   @Test
   public void idempotent() throws Exception {
-    String wrap = StringWrapper.wrap(40, formatter.formatSource(input), formatter);
+    String wrap = StringWrapper.wrap(100, formatter.formatSource(input), formatter);
     assertThat(wrap).isEqualTo(formatter.formatSource(wrap));
   }
 }

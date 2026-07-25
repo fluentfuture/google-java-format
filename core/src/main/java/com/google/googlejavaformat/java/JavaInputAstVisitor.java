@@ -1224,7 +1224,10 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     List<ExpressionTree> operands = new ArrayList<>();
     List<String> operators = new ArrayList<>();
     walkInfix(precedence(node), node, operands, operators);
-    FillMode fillMode = hasOnlyShortItems(operands) ? INDEPENDENT : UNIFIED;
+    FillMode fillMode =
+        hasOnlyShortArguments(operands) && !hasStringLiteralEndingWithNewline(operands)
+            ? INDEPENDENT
+            : UNIFIED;
     builder.open(plusFour);
     scan(operands.get(0), null);
     int operatorsN = operators.size();
@@ -3485,6 +3488,22 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       }
     }
     return true;
+  }
+
+  private static boolean hasStringLiteralEndingWithNewline(
+      List<? extends ExpressionTree> operands) {
+    for (ExpressionTree operand : operands) {
+      if (operand.getKind() == STRING_LITERAL) {
+        Object value = ((LiteralTree) operand).getValue();
+        if (value instanceof String) {
+          String str = (String) value;
+          if (str.endsWith("\n") || str.endsWith("\r")) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
   }
 
   private boolean hasOnlyShortParameters(
