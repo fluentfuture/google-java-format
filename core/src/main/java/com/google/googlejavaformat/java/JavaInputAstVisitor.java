@@ -2580,7 +2580,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
   }
 
   private static boolean isRelaxableForMethodArgument(ExpressionTree expr) {
-    return isBuilderChain(expr);
+    return isBuilderChain(expr) || expr.getKind() == Tree.Kind.LAMBDA_EXPRESSION;
   }
 
   private static boolean isBuilderChain(ExpressionTree expr) {

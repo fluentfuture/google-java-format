@@ -819,7 +819,7 @@ class T {
         """
         class T {
           void f() {
-            addArgs(t -> new CelExpr.Macro.FilterMap(t, v, c1, c2, someOtherVeryLongArgumentNameToForceWrapping));
+            addArgs(t -> new CelExpr.Macro.FilterMap(t, v, c1, c2, someOtherVeryLongArgumentNameToForceWrappingAndEnsureItExceedsMaxWidthOfOneHundred));
           }
         }
         """;
@@ -827,13 +827,60 @@ class T {
         """
         class T {
           void f() {
-            addArgs(
-                t -> new CelExpr.Macro.FilterMap(
-                    t, v, c1, c2, someOtherVeryLongArgumentNameToForceWrapping));
+            addArgs(t -> new CelExpr.Macro.FilterMap(
+                t, v, c1, c2,
+                someOtherVeryLongArgumentNameToForceWrappingAndEnsureItExceedsMaxWidthOfOneHundred));
           }
         }
         """;
     assertThat(new Formatter().formatSource(inputLambdaArg)).isEqualTo(expectedLambdaArg);
+
+    // 8b. Block lambda with 1 argument must keep lambda parameters on the same line
+    String inputBlockLambda =
+        """
+        class T {
+          void f() {
+            subscribe(x -> {
+              doSomething(x);
+              doSomethingElse(x);
+            });
+          }
+        }
+        """;
+    String expectedBlockLambda =
+        """
+        class T {
+          void f() {
+            subscribe(x -> {
+              doSomething(x);
+              doSomethingElse(x);
+            });
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputBlockLambda)).isEqualTo(expectedBlockLambda);
+
+    // 8c. Method call with 1 argument that is a lambda. The lambda doesn't fit on the current line,
+    // but fits entirely flat on the next line. It must wrap the lambda and keep it flat.
+    String inputLambdaFitsOnNextLine =
+        """
+        class T {
+          void f() {
+            someReceiver.someVeryLongMethodNameThatIsLongerThanEightyCharactersAndExceedsMaxWidth(x -> doSomething(x));
+          }
+        }
+        """;
+    String expectedLambdaFitsOnNextLine =
+        """
+        class T {
+          void f() {
+            someReceiver.someVeryLongMethodNameThatIsLongerThanEightyCharactersAndExceedsMaxWidth(
+                x -> doSomething(x));
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputLambdaFitsOnNextLine))
+        .isEqualTo(expectedLambdaFitsOnNextLine);
 
     // 7. Head section does not fit on same line but fits on next line
     String inputForceBreak =
