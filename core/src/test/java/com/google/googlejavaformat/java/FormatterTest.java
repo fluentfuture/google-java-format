@@ -1230,4 +1230,65 @@ class T {
         """;
     assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
   }
+
+  @Test
+  public void anonymousClassWrapping() throws Exception {
+    String input =
+        """
+        class T {
+          void f() {
+            subscribe(new Runnable() {
+              @Override
+              public void run() {
+                doSomething();
+              }
+            });
+          }
+        }
+        """;
+    String expected =
+        """
+        class T {
+          void f() {
+            subscribe(new Runnable() {
+              @Override public void run() {
+                doSomething();
+              }
+            });
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
+  }
+
+  @Test
+  public void anonymousClassWrapping_exceedsLineLength() throws Exception {
+    String input =
+        """
+        class T {
+          void f() {
+            someVeryLongReceiver.someMethodWithAVeryLongNameThatExceedsLimitsToForceWrapping(new Runnable() {
+              @Override
+              public void run() {
+                doSomething();
+              }
+            });
+          }
+        }
+        """;
+    String expected =
+        """
+        class T {
+          void f() {
+            someVeryLongReceiver.someMethodWithAVeryLongNameThatExceedsLimitsToForceWrapping(
+                new Runnable() {
+                  @Override public void run() {
+                    doSomething();
+                  }
+                });
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
+  }
 }

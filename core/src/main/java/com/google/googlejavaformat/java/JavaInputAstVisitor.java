@@ -2574,13 +2574,21 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
     if (expr.getKind() == Tree.Kind.NEW_CLASS) {
       NewClassTree newClass = (NewClassTree) expr;
-      return !newClass.getArguments().isEmpty();
+      return !newClass.getArguments().isEmpty() || newClass.getClassBody() != null;
     }
     return false;
   }
 
   private static boolean isRelaxableForMethodArgument(ExpressionTree expr) {
-    return isBuilderChain(expr) || expr.getKind() == Tree.Kind.LAMBDA_EXPRESSION;
+    return isBuilderChain(expr) || expr.getKind() == Tree.Kind.LAMBDA_EXPRESSION
+        || (expr.getKind() == Tree.Kind.NEW_CLASS && ((NewClassTree) expr).getClassBody() != null);
+  }
+
+  private static boolean isBlockArgument(ExpressionTree expr) {
+    return (expr.getKind() == Tree.Kind.LAMBDA_EXPRESSION
+            && ((LambdaExpressionTree) expr).getBodyKind()
+                == LambdaExpressionTree.BodyKind.STATEMENT)
+        || (expr.getKind() == Tree.Kind.NEW_CLASS && ((NewClassTree) expr).getClassBody() != null);
   }
 
   private static boolean isBuilderChain(ExpressionTree expr) {
@@ -3094,7 +3102,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
     // don't break after the first element if it is every small, unless the
     // chain starts with another expression
-    int minLength = indentMultiplier * 12;
+    int minLength = indentMultiplier * 24;
     int length = needDot0 ? minLength : 0;
     for (ExpressionTree e : items) {
       if (needDot) {
@@ -3137,8 +3145,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
     MethodInvocationTree methodInvocation = (MethodInvocationTree) e;
     Name name = getMethodName(methodInvocation);
-    if (!(methodInvocation.getMethodSelect() instanceof IdentifierTree)
-        || name.length() > 4
+    if (!(methodInvocation.getMethodSelect() instanceof IdentifierTree) || name.length() > 4
         || !methodInvocation.getTypeArguments().isEmpty()
         || methodInvocation.getArguments().size() != 1) {
       return false;
@@ -3349,7 +3356,11 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
    */
   private void addArguments(
       ExpressionTree node, List<? extends ExpressionTree> arguments, Indent plusIndent) {
-    builder.open(plusIndent);
+    Indent argIndent = plusIndent;
+    if (arguments.size() == 1 && isBlockArgument(arguments.get(0))) {
+      argIndent = ZERO;
+    }
+    builder.open(argIndent);
     token("(");
     if (!arguments.isEmpty()) {
       int templateIndex = getFormatTemplateIndex(node, arguments);
@@ -3401,7 +3412,9 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
         builder.close();
       } else {
         if (arguments.size() == 1 && isRelaxableForMethodArgument(arguments.get(0))) {
-          builder.breakOp(Doc.FillMode.RELAXED, "", ZERO, /* isMethodCall= */ true);
+          builder.breakOp(
+              Doc.FillMode.RELAXED, "", ZERO,
+              /* isMethodCall= */ !isBlockArgument(arguments.get(0)));
         } else {
           builder.breakOp();
         }
@@ -3426,8 +3439,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       return false;
     }
     String receiverStr = receiver.toString();
-    return receiverStr.equals("Map")
-        || receiverStr.equals("java.util.Map")
+    return receiverStr.equals("Map") || receiverStr.equals("java.util.Map")
         || receiverStr.equals("ImmutableMap")
         || receiverStr.equals("com.google.common.collect.ImmutableMap")
         || receiverStr.equals("ImmutableBiMap")
@@ -4028,8 +4040,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     if (first.getKind() == VARIABLE) {
       int start = getStartPosition(first);
       fragments.add((VariableTree) first);
-      while (it.hasNext()
-          && it.peek().getKind() == VARIABLE
+      while (it.hasNext() && it.peek().getKind() == VARIABLE
           && getStartPosition(it.peek()) == start) {
         fragments.add((VariableTree) it.next());
       }

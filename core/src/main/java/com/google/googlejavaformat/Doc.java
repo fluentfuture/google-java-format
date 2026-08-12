@@ -81,21 +81,24 @@ public abstract class Doc {
 
   public record State(
       int lastIndent, int indent, int column, boolean mustBreak, int relaxedUnindent,
-      boolean parentWasFlat) {
+      int lineStartIndent, boolean parentWasFlat) {
     public State(int indent0, int column0) {
-      this(indent0, indent0, column0, false, 0, false);
+      this(indent0, indent0, column0, false, 0, indent0, false);
     }
 
     State withColumn(int column) {
-      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent, parentWasFlat);
+      return new State(
+          lastIndent, indent, column, mustBreak, relaxedUnindent, lineStartIndent, parentWasFlat);
     }
 
     State withMustBreak(boolean mustBreak) {
-      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent, parentWasFlat);
+      return new State(
+          lastIndent, indent, column, mustBreak, relaxedUnindent, lineStartIndent, parentWasFlat);
     }
 
     State withParentWasFlat(boolean parentWasFlat) {
-      return new State(lastIndent, indent, column, mustBreak, relaxedUnindent, parentWasFlat);
+      return new State(
+          lastIndent, indent, column, mustBreak, relaxedUnindent, lineStartIndent, parentWasFlat);
     }
   }
 
@@ -255,11 +258,10 @@ public abstract class Doc {
         return state.withColumn(state.column + thisWidth);
       }
       State broken = computeBroken(
-          commentsHelper,
-          maxWidth,
+          commentsHelper, maxWidth,
           new State(
               state.indent + plusIndent.eval(), state.indent + plusIndent.eval(), state.column,
-              false, state.relaxedUnindent, state.parentWasFlat));
+              false, state.relaxedUnindent, state.lineStartIndent, state.parentWasFlat));
       return state.withColumn(broken.column);
     }
 
@@ -541,18 +543,14 @@ public abstract class Doc {
           isUnified
               || state.mustBreak
               || (state.column + breakWidth + splitWidth > maxWidth
-                  && !(optBreakDoc.isPresent()
-                      && optBreakDoc.get().fillMode == FillMode.RELAXED
+                  && !(optBreakDoc.isPresent() && optBreakDoc.get().fillMode == FillMode.RELAXED
                       && allowInternalWrapping(optBreakDoc, split)));
 
-      if (optBreakDoc.isPresent()
-          && optBreakDoc.get().fillMode == FillMode.RELAXED
-          && optBreakDoc.get().isMethodCall()
-          && state.parentWasFlat) {
+      if (optBreakDoc.isPresent() && optBreakDoc.get().fillMode == FillMode.RELAXED
+          && optBreakDoc.get().isMethodCall() && state.parentWasFlat) {
         shouldBreak = true;
       }
-      if (optBreakDoc.isPresent()
-          && optBreakDoc.get().fillMode == FillMode.RELAXED
+      if (optBreakDoc.isPresent() && optBreakDoc.get().fillMode == FillMode.RELAXED
           && !shouldBreak) {
         int nextIndent = Math.max(state.lastIndent + optBreakDoc.get().plusIndent.eval(), 0);
         WidthResult headSameLineResult = getHeadWidth(split, state.column + breakWidth);
@@ -614,32 +612,32 @@ public abstract class Doc {
       boolean enoughRoom = state.column + splitWidth <= maxWidth;
 
       State splitState = state.withMustBreak(false);
-      if (optBreakDoc.isPresent()
-          && !shouldBreak
+      if (optBreakDoc.isPresent() && !shouldBreak
           && optBreakDoc.get().fillMode == FillMode.RELAXED) {
         if (!enoughRoom) {
           splitState = splitState.withParentWasFlat(true);
         }
         int parentPlus = parentPlusIndent.eval();
-        boolean isMethodCall = false;
-        if (currentLevel.getPlusIndent().eval() == 0) {
-          Level parentLevel = currentLevel.getParent();
-          while (parentLevel != null && parentLevel.getPlusIndent().eval() == 0) {
-            parentLevel = parentLevel.getParent();
+        boolean isMethodCall = optBreakDoc.isPresent() && optBreakDoc.get().isMethodCall();
+        int shiftedIndent;
+        if (currentLevel.getPlusIndent().eval() == 0 && !isMethodCall) {
+          shiftedIndent = splitState.lineStartIndent;
+        } else {
+          if (currentLevel.getPlusIndent().eval() == 0) {
+            Level parentLevel = currentLevel.getParent();
+            while (parentLevel != null && parentLevel.getPlusIndent().eval() == 0) {
+              parentLevel = parentLevel.getParent();
+            }
+            if (parentLevel != null && parentLevel.getPlusIndent().eval() == 4) {
+              parentPlus += 4;
+            }
           }
-          if (parentLevel != null && parentLevel.getPlusIndent().eval() == 4) {
-            parentPlus += 4;
-            isMethodCall = true;
-          }
-        }
-        int shiftedIndent = splitState.indent;
-        if (!isMethodCall || splitState.relaxedUnindent == 0) {
           shiftedIndent = Math.max(splitState.indent - parentPlus, 0);
         }
         int newRelaxedUnindent = splitState.relaxedUnindent + parentPlus;
         splitState = new State(
             shiftedIndent, shiftedIndent, splitState.column, splitState.mustBreak,
-            newRelaxedUnindent, splitState.parentWasFlat);
+            newRelaxedUnindent, shiftedIndent, splitState.parentWasFlat);
       }
 
       state = computeSplit(commentsHelper, maxWidth, split, splitState);
@@ -710,7 +708,8 @@ public abstract class Doc {
 
     private static WidthResult getHeadWidthFlat(Doc doc, int column) {
       if (doc instanceof Break b) {
-        if (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT) {
+        if (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT
+            || b.fillMode == FillMode.FORCED) {
           return new WidthResult(0, true);
         }
         return new WidthResult(b.getWidth(), false);
@@ -723,7 +722,8 @@ public abstract class Doc {
         for (int i = 0; i < level.docs.size(); i++) {
           Doc child = level.docs.get(i);
           if (child instanceof Break b
-              && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT)) {
+              && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT
+                  || b.fillMode == FillMode.FORCED)) {
             if (isDotBreak(level, i)) {
               if (isBuilderBreak(level, i)) {
                 continue;
@@ -747,7 +747,8 @@ public abstract class Doc {
       for (int i = 0; i < docs.size(); i++) {
         Doc doc = docs.get(i);
         if (doc instanceof Break b
-            && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT)) {
+            && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT
+                || b.fillMode == FillMode.FORCED)) {
           if (isDotBreakList(docs, i)) {
             if (isBuilderBreakList(docs, i)) {
               continue;
@@ -765,8 +766,7 @@ public abstract class Doc {
     }
 
     private static boolean isDotBreak(Level level, int breakIndex) {
-      return breakIndex + 1 < level.docs.size()
-          && level.docs.get(breakIndex + 1) instanceof Token t
+      return breakIndex + 1 < level.docs.size() && level.docs.get(breakIndex + 1) instanceof Token t
           && ".".equals(t.getToken().getTok().getOriginalText());
     }
 
@@ -782,8 +782,7 @@ public abstract class Doc {
     }
 
     private static boolean isDotBreakList(List<Doc> docs, int breakIndex) {
-      return breakIndex + 1 < docs.size()
-          && docs.get(breakIndex + 1) instanceof Token t
+      return breakIndex + 1 < docs.size() && docs.get(breakIndex + 1) instanceof Token t
           && ".".equals(t.getToken().getTok().getOriginalText());
     }
 
@@ -1072,7 +1071,9 @@ public abstract class Doc {
       if (broken) {
         this.broken = true;
         this.newIndent = max(lastIndent + plusIndent.eval(), 0);
-        return state.withColumn(newIndent);
+        return new State(
+            state.lastIndent, state.indent, newIndent, state.mustBreak, state.relaxedUnindent,
+            newIndent, state.parentWasFlat);
       } else {
         this.broken = false;
         this.newIndent = -1;

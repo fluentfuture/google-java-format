@@ -40,13 +40,11 @@ public abstract class Indent {
       return new Const(n * indentMultiplier);
     }
 
-    @Override
-    int eval() {
+    @Override int eval() {
       return n;
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this).add("n", n).toString();
     }
   }
@@ -67,13 +65,11 @@ public abstract class Indent {
       return new If(condition, thenIndent, elseIndent);
     }
 
-    @Override
-    int eval() {
+    @Override int eval() {
       return (condition.wasBreakTaken() ? thenIndent : elseIndent).eval();
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this)
           .add("condition", condition)
           .add("thenIndent", thenIndent)
@@ -81,4 +77,5 @@ public abstract class Indent {
           .toString();
     }
   }
+
 }
