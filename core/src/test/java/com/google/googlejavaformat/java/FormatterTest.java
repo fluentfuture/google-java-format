@@ -650,7 +650,7 @@ class T {
 
   @Test
   public void testLocalStyleChanges() throws Exception {
-    // 1. @Override on the same line
+    // 1. @Override, @Test, @Before, @After on the same line
     String inputOverride =
         """
         class T {
@@ -658,6 +658,12 @@ class T {
           public String toString() {
             return "";
           }
+          @Test
+          public void testMethod() {}
+          @Before
+          void setUp() {}
+          @After
+          void tearDown() {}
         }
         """;
     String expectedOverride =
@@ -666,6 +672,12 @@ class T {
           @Override public String toString() {
             return "";
           }
+
+          @Test public void testMethod() {}
+
+          @Before void setUp() {}
+
+          @After void tearDown() {}
         }
         """;
     assertThat(new Formatter().formatSource(inputOverride)).isEqualTo(expectedOverride);

@@ -2330,13 +2330,32 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     return visitModifiers(splitModifiers, annotationsDirection, declarationAnnotationBreak);
   }
 
-  private static boolean isOverride(AnnotationTree tree) {
-    return tree.getAnnotationType() instanceof IdentifierTree identifierTree
-        && identifierTree.getName().contentEquals("Override");
+  private static final ImmutableSet<String> SAME_LINE_ANNOTATIONS =
+      ImmutableSet.of(
+          "Override",
+          "Test",
+          "Before",
+          "After",
+          "BeforeClass",
+          "AfterClass",
+          "BeforeEach",
+          "AfterEach",
+          "BeforeAll",
+          "AfterAll",
+          "ParameterizedTest");
+
+  private static boolean prefersSameLine(AnnotationTree tree) {
+    if (tree.getAnnotationType() instanceof IdentifierTree identifierTree) {
+      return SAME_LINE_ANNOTATIONS.contains(identifierTree.getName().toString());
+    }
+    if (tree.getAnnotationType() instanceof MemberSelectTree memberSelectTree) {
+      return SAME_LINE_ANNOTATIONS.contains(memberSelectTree.getIdentifier().toString());
+    }
+    return false;
   }
 
-  private static boolean isOverride(AnnotationOrModifier annotationOrModifier) {
-    return annotationOrModifier.isAnnotation() && isOverride(annotationOrModifier.annotation());
+  private static boolean prefersSameLine(AnnotationOrModifier annotationOrModifier) {
+    return annotationOrModifier.isAnnotation() && prefersSameLine(annotationOrModifier.annotation());
   }
 
   @CheckReturnValue
@@ -2355,7 +2374,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     while (!declarationModifiers.isEmpty() && !declarationModifiers.peekFirst().isModifier()) {
       if (afterFirstToken) {
         boolean vertical = annotationsDirection.isVertical();
-        if (lastAnnotation != null && isOverride(lastAnnotation)) {
+        if (lastAnnotation != null && prefersSameLine(lastAnnotation)) {
           vertical = false;
         }
         builder.addAll(
@@ -2370,7 +2389,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
     builder.close();
     boolean trailingVertical = annotationsDirection.isVertical();
-    if (lastAnnotation != null && isOverride(lastAnnotation)) {
+    if (lastAnnotation != null && prefersSameLine(lastAnnotation)) {
       builder.space();
       if (declarationModifiers.isEmpty()) {
         return splitModifiers.typeAnnotations();
