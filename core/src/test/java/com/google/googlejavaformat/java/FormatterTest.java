@@ -703,6 +703,35 @@ class T {
         """;
     assertThat(new Formatter().formatSource(inputArguments)).isEqualTo(expectedArguments);
 
+    // 2b. Short arguments already one-per-line remain one-per-line (unified)
+    String inputOnePerLine =
+        """
+        class T {
+          void f() {
+            foo(
+                firstLongArgumentName,
+                secondLongArgumentName,
+                thirdLongArgumentName,
+                fourthLongArgumentName,
+                fifthLongArgumentName);
+          }
+        }
+        """;
+    String expectedOnePerLine =
+        """
+        class T {
+          void f() {
+            foo(
+                firstLongArgumentName,
+                secondLongArgumentName,
+                thirdLongArgumentName,
+                fourthLongArgumentName,
+                fifthLongArgumentName);
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputOnePerLine)).isEqualTo(expectedOnePerLine);
+
     // 3. Rectangle rule for method invocation chains (no break after `=`)
     String inputChain =
         """

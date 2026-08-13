@@ -1298,6 +1298,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     boolean afterFirstToken = false;
     Doc.FillMode fillMode =
         hasOnlyShortParameters(node.getParameters())
+                && !isAlreadyOnePerLine(node.getParameters())
             ? Doc.FillMode.INDEPENDENT
             : Doc.FillMode.UNIFIED;
     for (VariableTree parameter : node.getParameters()) {
@@ -2765,6 +2766,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     boolean afterFirstToken = false;
     Doc.FillMode fillMode =
         hasOnlyShortParameters(receiver, parameters)
+                && !isAlreadyOnePerLine(parameters)
             ? Doc.FillMode.INDEPENDENT
             : Doc.FillMode.UNIFIED;
     if (receiver.isPresent()) {
@@ -3422,10 +3424,17 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
         }
         scan(arguments.get(templateIndex), null);
         if (templateIndex + 1 < arguments.size()) {
+          List<? extends ExpressionTree> templateArgs =
+              arguments.subList(templateIndex + 1, arguments.size());
           token(",");
-          builder.breakOp(Doc.FillMode.INDEPENDENT, " ", ZERO);
+          builder.breakOp(
+              hasOnlyShortArguments(templateArgs) && !isAlreadyOnePerLine(templateArgs)
+                  ? Doc.FillMode.INDEPENDENT
+                  : Doc.FillMode.UNIFIED,
+              " ",
+              ZERO);
           builder.open(ZERO);
-          argList(arguments.subList(templateIndex + 1, arguments.size()));
+          argList(templateArgs);
           builder.close();
         }
         builder.close();
@@ -3562,10 +3571,32 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
         startPosition, getEndPosition(parameter, getCurrentPath()) - startPosition);
   }
 
+  private boolean isAlreadyOnePerLine(List<? extends Tree> items) {
+    if (items.size() <= 1) {
+      return false;
+    }
+    int prevLine = -1;
+    for (Tree item : items) {
+      int startPos = getStartPosition(item);
+      if (startPos < 0) {
+        return false;
+      }
+      int line = builder.getInput().getLineNumber(startPos);
+      if (prevLine != -1 && line <= prevLine) {
+        return false;
+      }
+      prevLine = line;
+    }
+    return true;
+  }
+
   private void argList(List<? extends ExpressionTree> arguments) {
     builder.open(ZERO);
     boolean afterFirstToken = false;
-    FillMode fillMode = hasOnlyShortArguments(arguments) ? FillMode.INDEPENDENT : FillMode.UNIFIED;
+    FillMode fillMode =
+        hasOnlyShortArguments(arguments) && !isAlreadyOnePerLine(arguments)
+            ? FillMode.INDEPENDENT
+            : FillMode.UNIFIED;
     for (ExpressionTree argument : arguments) {
       if (afterFirstToken) {
         token(",");
