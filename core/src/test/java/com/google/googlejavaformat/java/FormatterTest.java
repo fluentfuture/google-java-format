@@ -41,8 +41,7 @@ public final class FormatterTest {
 
   @Rule public TemporaryFolder testFolder = new TemporaryFolder();
 
-  @Test
-  public void testFormatAosp() throws Exception {
+  @Test public void testFormatAosp() throws Exception {
     // don't forget to misspell "long", or you will be mystified for a while
     String input =
         "class A{void b(){while(true){weCanBeCertainThatThisWillEndUpGettingWrapped("
@@ -72,8 +71,7 @@ public final class FormatterTest {
     assertThat(out.toString()).isEqualTo(expectedOutput);
   }
 
-  @Test
-  public void testFormatNonJavaFiles() throws Exception {
+  @Test public void testFormatNonJavaFiles() throws Exception {
     StringWriter out = new StringWriter();
     StringWriter err = new StringWriter();
     Main main = new Main(new PrintWriter(out, true), new PrintWriter(err, true), System.in);
@@ -87,8 +85,7 @@ public final class FormatterTest {
     assertThat(err.toString()).contains("Foo.java: could not read file: ");
   }
 
-  @Test
-  public void testFormatStdinStdoutWithDashFlag() throws Exception {
+  @Test public void testFormatStdinStdoutWithDashFlag() throws Exception {
     String input =
         """
         class Foo{
@@ -118,8 +115,7 @@ public final class FormatterTest {
     System.setIn(oldIn);
   }
 
-  @Test
-  public void testFormatLengthUpToEOF() throws Exception {
+  @Test public void testFormatLengthUpToEOF() throws Exception {
     String input =
         """
         class Foo{
@@ -148,8 +144,7 @@ public final class FormatterTest {
     assertThat(out.toString()).isEqualTo(expectedOutput);
   }
 
-  @Test
-  public void testFormatLengthOutOfRange() throws Exception {
+  @Test public void testFormatLengthOutOfRange() throws Exception {
     String input = "class Foo{}\n";
 
     Path tmpdir = testFolder.newFolder().toPath();
@@ -166,8 +161,7 @@ public final class FormatterTest {
         .contains("error: invalid offset (0) or length (9999); offset + length (9999)");
   }
 
-  @Test
-  public void testFormatOffsetOutOfRange() throws Exception {
+  @Test public void testFormatOffsetOutOfRange() throws Exception {
     String input = "class Foo{}\n";
 
     Path tmpdir = testFolder.newFolder().toPath();
@@ -184,8 +178,7 @@ public final class FormatterTest {
         .contains("error: invalid offset (9998) or length (1); offset + length (9999)");
   }
 
-  @Test
-  public void blankInClassBody() throws FormatterException {
+  @Test public void blankInClassBody() throws FormatterException {
     String input =
         """
         package test;
@@ -203,8 +196,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void blankInClassBodyNoTrailing() throws FormatterException {
+  @Test public void blankInClassBodyNoTrailing() throws FormatterException {
     String input =
         """
         package test;
@@ -222,8 +214,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void docCommentTrailingBlank() throws FormatterException {
+  @Test public void docCommentTrailingBlank() throws FormatterException {
     String input =
         """
         class T {
@@ -243,8 +234,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void blockCommentInteriorTrailingBlank() throws FormatterException {
+  @Test public void blockCommentInteriorTrailingBlank() throws FormatterException {
     String input =
         """
         class T {
@@ -271,8 +261,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void blockCommentTrailingBlank() throws FormatterException {
+  @Test public void blockCommentTrailingBlank() throws FormatterException {
     String input =
         """
         class T {
@@ -293,8 +282,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void lineCommentTrailingBlank() throws FormatterException {
+  @Test public void lineCommentTrailingBlank() throws FormatterException {
     String input =
         """
         class T {
@@ -315,8 +303,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void lineCommentTrailingThinSpace() throws FormatterException {
+  @Test public void lineCommentTrailingThinSpace() throws FormatterException {
     // The Unicode thin space is matched by CharMatcher.whitespace() but not trim().
     String input = "class T {\n  // asd\u2009\n}\n";
     String output = new Formatter().formatSource(input);
@@ -329,8 +316,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void noBlankAfterLineCommentWithInteriorBlankLine() throws FormatterException {
+  @Test public void noBlankAfterLineCommentWithInteriorBlankLine() throws FormatterException {
     String input =
         """
         class T {
@@ -353,8 +339,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void badConstructor() throws FormatterException {
+  @Test public void badConstructor() throws FormatterException {
     String input = "class X { Y() {} }";
     String output = new Formatter().formatSource(input);
     String expect =
@@ -366,8 +351,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void voidMethod() throws FormatterException {
+  @Test public void voidMethod() throws FormatterException {
     String input = "class X { void Y() {} }";
     String output = new Formatter().formatSource(input);
     String expect =
@@ -394,8 +378,7 @@ public final class FormatterTest {
       import javax.annotation.Nullable;
       """;
 
-  @Test
-  public void importsNotReorderedByDefault() throws FormatterException {
+  @Test public void importsNotReorderedByDefault() throws FormatterException {
     String input =
         "package com.google.example;\n" + UNORDERED_IMPORTS + "public class ExampleTest {}\n";
     String output = new Formatter().formatSource(input);
@@ -404,8 +387,7 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void importsFixedIfRequested() throws FormatterException {
+  @Test public void importsFixedIfRequested() throws FormatterException {
     String input =
         "package com.google.example;\n"
             + UNORDERED_IMPORTS
@@ -429,26 +411,22 @@ public final class FormatterTest {
     assertThat(output).isEqualTo(expect);
   }
 
-  @Test
-  public void importOrderingWithoutFormatting() throws IOException, UsageException {
+  @Test public void importOrderingWithoutFormatting() throws IOException, UsageException {
     importOrdering(
         "--fix-imports-only", "com/google/googlejavaformat/java/testimports/A.imports-only");
   }
 
-  @Test
-  public void importOrderingAndFormatting() throws IOException, UsageException {
+  @Test public void importOrderingAndFormatting() throws IOException, UsageException {
     importOrdering(null, "com/google/googlejavaformat/java/testimports/A.imports-and-formatting");
   }
 
-  @Test
-  public void formattingWithoutImportOrdering() throws IOException, UsageException {
+  @Test public void formattingWithoutImportOrdering() throws IOException, UsageException {
     importOrdering(
         "--skip-sorting-imports",
         "com/google/googlejavaformat/java/testimports/A.formatting-and-unused-import-removal");
   }
 
-  @Test
-  public void formattingWithoutRemovingUnusedImports() throws IOException, UsageException {
+  @Test public void formattingWithoutRemovingUnusedImports() throws IOException, UsageException {
     importOrdering(
         "--skip-removing-unused-imports",
         "com/google/googlejavaformat/java/testimports/A.formatting-and-import-sorting");
@@ -487,14 +465,12 @@ public final class FormatterTest {
   }
 
   // regression test for google-java-format#47
-  @Test
-  public void testTrailingCommentWithoutTerminalNewline() throws Exception {
+  @Test public void testTrailingCommentWithoutTerminalNewline() throws Exception {
     assertThat(new Formatter().formatSource("/*\n * my comment */"))
         .isEqualTo("/*\n * my comment */\n");
   }
 
-  @Test
-  public void testEmptyArray() throws Exception {
+  @Test public void testEmptyArray() throws Exception {
     assertThat(new Formatter().formatSource("class T { int x[] = {,}; }"))
         .isEqualTo(
             """
@@ -504,8 +480,7 @@ public final class FormatterTest {
             """);
   }
 
-  @Test
-  public void stringEscapeLength() throws Exception {
+  @Test public void stringEscapeLength() throws Exception {
     assertThat(new Formatter().formatSource("class T {{ f(\"\\\"\"); }}"))
         .isEqualTo(
             """
@@ -517,8 +492,7 @@ public final class FormatterTest {
             """);
   }
 
-  @Test
-  public void wrapLineComment() throws Exception {
+  @Test public void wrapLineComment() throws Exception {
     assertThat(
             new Formatter()
                 .formatSource(
@@ -540,8 +514,7 @@ class T {
 """);
   }
 
-  @Test
-  public void onlyWrapLineCommentOnWhitespace() throws Exception {
+  @Test public void onlyWrapLineCommentOnWhitespace() throws Exception {
     assertThat(
             new Formatter()
                 .formatSource(
@@ -562,8 +535,7 @@ class T {
 """);
   }
 
-  @Test
-  public void onlyWrapLineCommentOnWhitespace_noLeadingWhitespace() throws Exception {
+  @Test public void onlyWrapLineCommentOnWhitespace_noLeadingWhitespace() throws Exception {
     assertThat(
             new Formatter()
                 .formatSource(
@@ -584,15 +556,13 @@ class T {
 """);
   }
 
-  @Test
-  public void throwsFormatterException() throws Exception {
+  @Test public void throwsFormatterException() throws Exception {
     assertThrows(
         FormatterException.class,
         () -> new Formatter().formatSourceAndFixImports("package foo; public class {"));
   }
 
-  @Test
-  public void blankLinesImportComment() throws FormatterException {
+  @Test public void blankLinesImportComment() throws FormatterException {
     String withBlank =
         """
         package p;
@@ -630,8 +600,7 @@ class T {
     assertThat(ImportOrderer.reorderImports(withoutBlank, Style.GOOGLE)).isEqualTo(withoutBlank);
   }
 
-  @Test
-  public void dontWrapMoeLineComments() throws Exception {
+  @Test public void dontWrapMoeLineComments() throws Exception {
     assertThat(
             new Formatter()
                 .formatSource(
@@ -648,8 +617,7 @@ class T {
 """);
   }
 
-  @Test
-  public void testLocalStyleChanges() throws Exception {
+  @Test public void testLocalStyleChanges() throws Exception {
     // 1. @Override, @Test, @Before, @After on the same line
     String inputOverride =
         """
@@ -1201,10 +1169,102 @@ class T {
         }
         """;
     assertThat(new Formatter().formatSource(inputNestedBuilder)).isEqualTo(expectedNestedBuilder);
+
+    // 17. Trailing line comment suppresses line wrapping before it
+    String inputTrailingComment =
+        """
+        class T {
+          Parser<RegexPattern> f() {
+            return one('(').then( // space allowed after (, under free spacing mode
+                anyOf(
+                    groupContent.between("?=", ")").map(Lookaround.Lookahead::new),
+                    groupContent.between("?!", ")").map(Lookaround.NegativeLookahead::new)));
+          }
+        }
+        """;
+    String expectedTrailingComment =
+        """
+        class T {
+          Parser<RegexPattern> f() {
+            return one('(').then( // space allowed after (, under free spacing mode
+                anyOf(
+                    groupContent.between("?=", ")").map(Lookaround.Lookahead::new),
+                    groupContent.between("?!", ")").map(Lookaround.NegativeLookahead::new)));
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(inputTrailingComment))
+        .isEqualTo(expectedTrailingComment);
   }
 
-  @Test
-  public void removeTrailingTabsInComments() throws Exception {
+  @Test public void trailingComment_methodChain_suppressesLineWrap() throws Exception {
+    String input =
+        """
+        class T {
+          void f() {
+            foo.bar().baz( // trailing comment
+                arg1, arg2);
+          }
+        }
+        """;
+    String expected =
+        """
+        class T {
+          void f() {
+            foo.bar().baz( // trailing comment
+                arg1, arg2);
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
+  }
+
+  @Test public void trailingComment_methodChain_exceedsMaxWidth_wraps() throws Exception {
+    String input =
+        """
+        class T {
+          void f() {
+            veryLongReceiverObjectNameThatTakesUpManyCharacters.veryLongMethodInvocationNameThatTakesUpEvenMoreCharacters( // comment
+                arg1, arg2);
+          }
+        }
+        """;
+    String expected =
+        """
+        class T {
+          void f() {
+            veryLongReceiverObjectNameThatTakesUpManyCharacters
+                .veryLongMethodInvocationNameThatTakesUpEvenMoreCharacters( // comment
+                    arg1, arg2);
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
+  }
+
+  @Test public void trailingComment_assignment_suppressesLineWrap() throws Exception {
+    String input =
+        """
+        class T {
+          void f() {
+            Parser<RegexPattern> withContent = groupContent.between( // trailing comment
+                ":", ")");
+          }
+        }
+        """;
+    String expected =
+        """
+        class T {
+          void f() {
+            Parser<RegexPattern> withContent = groupContent.between( // trailing comment
+                ":", ")");
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
+  }
+
+  @Test public void removeTrailingTabsInComments() throws Exception {
     assertThat(
             new Formatter()
                 .formatSource(
@@ -1225,8 +1285,7 @@ class T {
             """);
   }
 
-  @Test
-  public void testRelaxedRectangularRule_onlyArgument() throws Exception {
+  @Test public void testRelaxedRectangularRule_onlyArgument() throws Exception {
     String input =
         """
         class T {
@@ -1252,8 +1311,7 @@ class T {
     assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
   }
 
-  @Test
-  public void testRelaxedRectangularRule_assignmentFitsFlatOnNextLine() throws Exception {
+  @Test public void testRelaxedRectangularRule_assignmentFitsFlatOnNextLine() throws Exception {
     String input =
         """
         class T {
@@ -1272,8 +1330,7 @@ class T {
     assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
   }
 
-  @Test
-  public void anonymousClassWrapping() throws Exception {
+  @Test public void anonymousClassWrapping() throws Exception {
     String input =
         """
         class T {
@@ -1302,8 +1359,7 @@ class T {
     assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
   }
 
-  @Test
-  public void anonymousClassWrapping_exceedsLineLength() throws Exception {
+  @Test public void anonymousClassWrapping_exceedsLineLength() throws Exception {
     String input =
         """
         class T {
@@ -1327,6 +1383,47 @@ class T {
                     doSomething();
                   }
                 });
+          }
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
+  }
+
+  @Test public void testRelaxedRectangularRule_dotChainReceiverExceedsLineLength()
+      throws Exception {
+    String input =
+        """
+        final class RegexParsers {
+          private static final Map<String, CharacterProperty> POSIX_CHAR_CLASSES = stream(PosixCharClass.values()).collect(groupingByEach(charClass -> charClass.names().stream(), onlyElement(identity()))).collect(Collectors::toUnmodifiableMap);
+        }
+        """;
+    String expected =
+        """
+        final class RegexParsers {
+          private static final Map<String, CharacterProperty> POSIX_CHAR_CLASSES =
+              stream(PosixCharClass.values())
+                  .collect(groupingByEach(charClass -> charClass.names().stream(), onlyElement(identity())))
+                  .collect(Collectors::toUnmodifiableMap);
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
+  }
+
+  @Test public void testRelaxedRectangularRule_dotChainReceiverFitsOnSameLine() throws Exception {
+    String input =
+        """
+        class T {
+          void f() {
+            Parser<List<CharSetElement>> quotedInClass = quotedText().map(s -> s.codePoints().mapToObj(LiteralChar::new).collect(toUnmodifiableList()));
+          }
+        }
+        """;
+    String expected =
+        """
+        class T {
+          void f() {
+            Parser<List<CharSetElement>> quotedInClass = quotedText()
+                .map(s -> s.codePoints().mapToObj(LiteralChar::new).collect(toUnmodifiableList()));
           }
         }
         """;

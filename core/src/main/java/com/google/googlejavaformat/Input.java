@@ -18,6 +18,7 @@ import com.google.common.base.MoreObjects;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableRangeMap;
+import java.util.Optional;
 
 /** An input to the formatter. */
 public abstract class Input extends InputOutput {
@@ -108,7 +109,6 @@ public abstract class Input extends InputOutput {
   public abstract ImmutableRangeMap<Integer, ? extends Token> getPositionTokenMap();
 
   public abstract ImmutableMap<Integer, Integer> getPositionToColumnMap();
-
   public abstract String getText();
 
   /**
@@ -125,8 +125,7 @@ public abstract class Input extends InputOutput {
    */
   public abstract Token getToken(int k);
 
-  @Override
-  public String toString() {
+  @Override public String toString() {
     return MoreObjects.toStringHelper(this).add("super", super.toString()).toString();
   }
 
@@ -135,6 +134,16 @@ public abstract class Input extends InputOutput {
 
   /** Converts a character offset in the input to a 0-based column number. */
   public abstract int getColumnNumber(int inputPosition);
+
+  /** Returns true if the given input line ends with a trailing line comment. */
+  public boolean hasTrailingComment(int lineNumber) {
+    return false;
+  }
+
+  /** Returns the first token at or after the given character position. */
+  public Optional<? extends Token> getTokenAtOrAfter(int position) {
+    return Optional.empty();
+  }
 
   /**
    * Construct a diagnostic. Populates the input filename, and converts character offsets to

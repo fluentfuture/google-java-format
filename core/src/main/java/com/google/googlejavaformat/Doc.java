@@ -707,12 +707,15 @@ public abstract class Doc {
     }
 
     private static WidthResult getHeadWidthFlat(Doc doc, int column) {
+      return getHeadWidthFlat(doc, column, true);
+    }
+
+    private static WidthResult getHeadWidthFlat(Doc doc, int column, boolean isChainLevel) {
       if (doc instanceof Break b) {
-        if (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT
-            || b.fillMode == FillMode.FORCED) {
+        if (b.fillMode == FillMode.FORCED) {
           return new WidthResult(0, true);
         }
-        return new WidthResult(b.getWidth(), false);
+        return new WidthResult(b.getFlat().length(), false);
       }
       if (doc instanceof Level level) {
         if (column + level.getWidth() <= 100) {
@@ -721,17 +724,15 @@ public abstract class Doc {
         int width = 0;
         for (int i = 0; i < level.docs.size(); i++) {
           Doc child = level.docs.get(i);
-          if (child instanceof Break b
-              && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT
-                  || b.fillMode == FillMode.FORCED)) {
-            if (isDotBreak(level, i)) {
-              if (isBuilderBreak(level, i)) {
-                continue;
-              }
+          if (isChainLevel && child instanceof Break b) {
+            if (b.fillMode == FillMode.FORCED) {
+              return new WidthResult(width, true);
+            }
+            if (isDotBreak(level, i) && !isBuilderBreak(level, i)) {
               break;
             }
           }
-          WidthResult childResult = getHeadWidthFlat(child, column + width);
+          WidthResult childResult = getHeadWidthFlat(child, column + width, isChainLevel && i == 0);
           width += childResult.width;
           if (childResult.stopped) {
             return new WidthResult(width, true);
@@ -746,17 +747,15 @@ public abstract class Doc {
       int width = 0;
       for (int i = 0; i < docs.size(); i++) {
         Doc doc = docs.get(i);
-        if (doc instanceof Break b
-            && (b.fillMode == FillMode.UNIFIED || b.fillMode == FillMode.INDEPENDENT
-                || b.fillMode == FillMode.FORCED)) {
-          if (isDotBreakList(docs, i)) {
-            if (isBuilderBreakList(docs, i)) {
-              continue;
-            }
+        if (doc instanceof Break b) {
+          if (b.fillMode == FillMode.FORCED) {
+            return new WidthResult(width, true);
+          }
+          if (isDotBreakList(docs, i) && !isBuilderBreakList(docs, i)) {
             break;
           }
         }
-        WidthResult result = getHeadWidthFlat(doc, column + width);
+        WidthResult result = getHeadWidthFlat(doc, column + width, true);
         width += result.width;
         if (result.stopped) {
           return new WidthResult(width, true);

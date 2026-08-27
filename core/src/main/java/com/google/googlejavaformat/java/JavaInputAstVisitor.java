@@ -1297,8 +1297,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
     boolean afterFirstToken = false;
     Doc.FillMode fillMode =
-        hasOnlyShortParameters(node.getParameters())
-                && !isAlreadyOnePerLine(node.getParameters())
+        hasOnlyShortParameters(node.getParameters()) && !isAlreadyOnePerLine(node.getParameters())
             ? Doc.FillMode.INDEPENDENT
             : Doc.FillMode.UNIFIED;
     for (VariableTree parameter : node.getParameters()) {
@@ -2331,19 +2330,18 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     return visitModifiers(splitModifiers, annotationsDirection, declarationAnnotationBreak);
   }
 
-  private static final ImmutableSet<String> SAME_LINE_ANNOTATIONS =
-      ImmutableSet.of(
-          "Override",
-          "Test",
-          "Before",
-          "After",
-          "BeforeClass",
-          "AfterClass",
-          "BeforeEach",
-          "AfterEach",
-          "BeforeAll",
-          "AfterAll",
-          "ParameterizedTest");
+  private static final ImmutableSet<String> SAME_LINE_ANNOTATIONS = ImmutableSet.of(
+      "Override",
+      "Test",
+      "Before",
+      "After",
+      "BeforeClass",
+      "AfterClass",
+      "BeforeEach",
+      "AfterEach",
+      "BeforeAll",
+      "AfterAll",
+      "ParameterizedTest");
 
   private static boolean prefersSameLine(AnnotationTree tree) {
     if (tree.getAnnotationType() instanceof IdentifierTree identifierTree) {
@@ -2356,7 +2354,8 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
   }
 
   private static boolean prefersSameLine(AnnotationOrModifier annotationOrModifier) {
-    return annotationOrModifier.isAnnotation() && prefersSameLine(annotationOrModifier.annotation());
+    return annotationOrModifier.isAnnotation()
+        && prefersSameLine(annotationOrModifier.annotation());
   }
 
   @CheckReturnValue
@@ -2512,21 +2511,23 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
           Range.closedOpen(
               getStartPosition(annotationTree), getEndPosition(annotationTree, getCurrentPath())));
     }
-    ImmutableList<Input.Tok> toks = builder.peekTokens(
-        getStartPosition(modifiersTree),
-        (Input.Tok tok) ->
-            // ModifiersTree end position information isn't reliable, so scan tokens as long as
-            // we're seeing annotations or modifiers
-            annotationRanges.contains(tok.getPosition()) || isModifier(tok.getText()));
-    ImmutableList<AnnotationOrModifier> modifiers = ImmutableList.copyOf(
-        Streams.concat(
-                toks.stream()
-                    // reject tokens from inside AnnotationTrees, we only want modifiers
-                    .filter(t -> !annotationRanges.contains(t.getPosition()))
-                    .map(AnnotationOrModifier::ofModifier),
-                annotations.stream().map(AnnotationOrModifier::ofAnnotation))
-            .sorted()
-            .collect(toList()));
+    ImmutableList<Input.Tok> toks =
+        builder.peekTokens(
+            getStartPosition(modifiersTree),
+            (Input.Tok tok) ->
+                // ModifiersTree end position information isn't reliable, so scan tokens as long as
+                // we're seeing annotations or modifiers
+                annotationRanges.contains(tok.getPosition()) || isModifier(tok.getText()));
+    ImmutableList<AnnotationOrModifier> modifiers =
+        ImmutableList.copyOf(
+            Streams.concat(
+                    toks.stream()
+                        // reject tokens from inside AnnotationTrees, we only want modifiers
+                        .filter(t -> !annotationRanges.contains(t.getPosition()))
+                        .map(AnnotationOrModifier::ofModifier),
+                    annotations.stream().map(AnnotationOrModifier::ofAnnotation))
+                .sorted()
+                .collect(toList()));
     // Take a suffix of annotations that are well-known type annotations, and which appear after any
     // declaration annotations or modifiers
     ImmutableList.Builder<AnnotationTree> typeAnnotations = ImmutableList.builder();
@@ -2577,13 +2578,24 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     return count;
   }
 
-  private static boolean isRelaxableForAssignment(ExpressionTree expr) {
+  private boolean isRelaxableForAssignment(ExpressionTree expr) {
     if (expr == null) {
       return false;
+    }
+    int startPos = getStartPosition(expr);
+    if (startPos >= 0) {
+      int line = builder.getInput().getLineNumber(startPos);
+      if (builder.getInput().hasTrailingComment(line)) {
+        return true;
+      }
     }
     if (expr.getKind() == Tree.Kind.SWITCH_EXPRESSION
         || expr.getKind() == Tree.Kind.LAMBDA_EXPRESSION) {
       return true;
+    }
+    if (expr.getKind() == Tree.Kind.NEW_CLASS) {
+      NewClassTree newClass = (NewClassTree) expr;
+      return !newClass.getArguments().isEmpty() || newClass.getClassBody() != null;
     }
     if (expr.getKind() == Tree.Kind.METHOD_INVOCATION) {
       MethodInvocationTree methodInvocation = (MethodInvocationTree) expr;
@@ -2591,10 +2603,6 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
         return true;
       }
       return dotChainLength(expr) > 2;
-    }
-    if (expr.getKind() == Tree.Kind.NEW_CLASS) {
-      NewClassTree newClass = (NewClassTree) expr;
-      return !newClass.getArguments().isEmpty() || newClass.getClassBody() != null;
     }
     return false;
   }
@@ -2765,8 +2773,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     builder.open(ZERO);
     boolean afterFirstToken = false;
     Doc.FillMode fillMode =
-        hasOnlyShortParameters(receiver, parameters)
-                && !isAlreadyOnePerLine(parameters)
+        hasOnlyShortParameters(receiver, parameters) && !isAlreadyOnePerLine(parameters)
             ? Doc.FillMode.INDEPENDENT
             : Doc.FillMode.UNIFIED;
     if (receiver.isPresent()) {
@@ -3109,6 +3116,26 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
   }
 
+  private boolean shouldRelaxForTrailingComment(ExpressionTree prev, ExpressionTree curr) {
+    if (prev == null || curr == null) {
+      return false;
+    }
+    int endPosPrev = getEndPosition(prev, getCurrentPath());
+    if (endPosPrev < 0) {
+      return false;
+    }
+    int linePrev = builder.getInput().getLineNumber(endPosPrev);
+    if (!builder.getInput().hasTrailingComment(linePrev)) {
+      return false;
+    }
+    Optional<? extends Input.Token> nextToken = builder.getInput().getTokenAtOrAfter(endPosPrev);
+    if (nextToken.isPresent()) {
+      int lineNext = builder.getInput().getLineNumber(nextToken.get().getTok().getPosition());
+      return lineNext == linePrev;
+    }
+    return false;
+  }
+
   /**
    * Output a "regular" chain of dereferences, possibly in builder-style. Break before every dot.
    *
@@ -3123,12 +3150,18 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
     // don't break after the first element if it is every small, unless the
     // chain starts with another expression
-    int minLength = indentMultiplier * 24;
+    int minLength = indentMultiplier * 4;
     int length = needDot0 ? minLength : 0;
-    for (ExpressionTree e : items) {
+    BreakTag dotTag = genSym();
+    for (int i = 0; i < items.size(); i++) {
+      ExpressionTree e = items.get(i);
       if (needDot) {
         if (length > minLength) {
-          builder.breakOp(FillMode.UNIFIED, "", ZERO);
+          Doc.FillMode fillMode =
+              shouldRelaxForTrailingComment(items.get(i - 1), e)
+                  ? Doc.FillMode.RELAXED
+                  : FillMode.UNIFIED;
+          builder.breakOp(fillMode, "", ZERO, Optional.of(dotTag), /* isMethodCall= */ true);
         }
         token(".");
         length++;
@@ -3210,13 +3243,15 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       ExpressionTree e = items.get(i);
       if (needDot) {
         FillMode fillMode;
-        if (!unconsumedPrefixes.isEmpty() && i <= unconsumedPrefixes.peekFirst()) {
+        if (shouldRelaxForTrailingComment(items.get(i - 1), e)) {
+          fillMode = Doc.FillMode.RELAXED;
+        } else if (!unconsumedPrefixes.isEmpty() && i <= unconsumedPrefixes.peekFirst()) {
           fillMode = prefixFillMode;
         } else {
           fillMode = FillMode.UNIFIED;
         }
 
-        builder.breakOp(fillMode, "", ZERO, Optional.of(nameTag));
+        builder.breakOp(fillMode, "", ZERO, Optional.of(nameTag), /* isMethodCall= */ true);
         token(".");
       }
       BreakTag tyargTag = genSym();
@@ -3770,7 +3805,8 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     // preprocess to separate declaration annotations + modifiers, type annotations
 
     DeclarationModifiersAndTypeAnnotations declarationAndTypeModifiers =
-        modifiers.map(m -> splitModifiers(m, m.getAnnotations()))
+        modifiers
+            .map(m -> splitModifiers(m, m.getAnnotations()))
             .orElse(DeclarationModifiersAndTypeAnnotations.empty());
     builder.open(
         kind == DeclarationKind.PARAMETER && declarationAndTypeModifiers.hasDeclarationAnnotation()

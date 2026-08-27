@@ -49,6 +49,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Optional;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.DiagnosticListener;
@@ -109,33 +110,27 @@ final class JavaInput extends Input {
       this.kind = kind;
     }
 
-    @Override
-    public int getIndex() {
+    @Override public int getIndex() {
       return index;
     }
 
-    @Override
-    public String getText() {
+    @Override public String getText() {
       return text;
     }
 
-    @Override
-    public String getOriginalText() {
+    @Override public String getOriginalText() {
       return originalText;
     }
 
-    @Override
-    public int length() {
+    @Override public int length() {
       return originalText.length();
     }
 
-    @Override
-    public int getPosition() {
+    @Override public int getPosition() {
       return position;
     }
 
-    @Override
-    public int getColumn() {
+    @Override public int getColumn() {
       return columnI;
     }
 
@@ -143,39 +138,32 @@ final class JavaInput extends Input {
       return isToken;
     }
 
-    @Override
-    public boolean isNewline() {
+    @Override public boolean isNewline() {
       return Newlines.isNewline(text);
     }
 
-    @Override
-    public boolean isSlashSlashComment() {
+    @Override public boolean isSlashSlashComment() {
       return text.startsWith("//");
     }
 
-    @Override
-    public boolean isSlashStarComment() {
+    @Override public boolean isSlashStarComment() {
       return text.startsWith("/*");
     }
 
-    @Override
-    public boolean isJavadocComment() {
+    @Override public boolean isJavadocComment() {
       // comments like `/***` or `////` are also javadoc, but their formatting probably won't be
       // improved by the javadoc formatter
       return ((text.startsWith("/**") && !text.startsWith("/***"))
-              || (Runtime.version().feature() >= 23
-                  && text.startsWith("///")
+              || (Runtime.version().feature() >= 23 && text.startsWith("///")
                   && !text.startsWith("////")))
           && text.length() > 4;
     }
 
-    @Override
-    public boolean isComment() {
+    @Override public boolean isComment() {
       return isSlashSlashComment() || isSlashStarComment();
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this)
           .add("index", index)
           .add("text", text)
@@ -220,8 +208,7 @@ final class JavaInput extends Input {
      *
      * @return the token's {@link Tok}
      */
-    @Override
-    public Tok getTok() {
+    @Override public Tok getTok() {
       return tok;
     }
 
@@ -230,8 +217,7 @@ final class JavaInput extends Input {
      *
      * @return the earlier {@link Tok}s assigned to this {@code Token}
      */
-    @Override
-    public ImmutableList<? extends Input.Tok> getToksBefore() {
+    @Override public ImmutableList<? extends Input.Tok> getToksBefore() {
       return toksBefore;
     }
 
@@ -240,13 +226,11 @@ final class JavaInput extends Input {
      *
      * @return the later {@link Tok}s assigned to this {@code Token}
      */
-    @Override
-    public ImmutableList<? extends Input.Tok> getToksAfter() {
+    @Override public ImmutableList<? extends Input.Tok> getToksAfter() {
       return toksAfter;
     }
 
-    @Override
-    public String toString() {
+    @Override public String toString() {
       return MoreObjects.toStringHelper(this)
           .add("tok", tok)
           .add("toksBefore", toksBefore)
@@ -328,13 +312,11 @@ final class JavaInput extends Input {
    *
    * @return the input text
    */
-  @Override
-  public String getText() {
+  @Override public String getText() {
     return text;
   }
 
-  @Override
-  public ImmutableMap<Integer, Integer> getPositionToColumnMap() {
+  @Override public ImmutableMap<Integer, Integer> getPositionToColumnMap() {
     return positionToColumnMap;
   }
 
@@ -353,8 +335,8 @@ final class JavaInput extends Input {
    * @param stopTokens a set of tokens which should cause lexing to stop. If one of these is found,
    *     the returned list will include tokens up to but not including that token.
    */
-  static ImmutableList<Tok> buildToks(String text, ImmutableSet<TokenKind> stopTokens)
-      throws FormatterException {
+  static ImmutableList<Tok> buildToks(
+      String text, ImmutableSet<TokenKind> stopTokens) throws FormatterException {
     stopTokens = ImmutableSet.<TokenKind>builder().addAll(stopTokens).add(TokenKind.EOF).build();
     Context context = new Context();
     Options.instance(context).put("--enable-preview", "true");
@@ -363,13 +345,12 @@ final class JavaInput extends Input {
     DiagnosticCollector<JavaFileObject> diagnosticCollector = new DiagnosticCollector<>();
     context.put(DiagnosticListener.class, diagnosticCollector);
     Log log = Log.instance(context);
-    log.useSource(
-        new SimpleJavaFileObject(URI.create("Source.java"), Kind.SOURCE) {
-          @Override
-          public CharSequence getCharContent(boolean ignoreEncodingErrors) throws IOException {
-            return text;
-          }
-        });
+    log.useSource(new SimpleJavaFileObject(URI.create("Source.java"), Kind.SOURCE) {
+      @Override public CharSequence getCharContent(
+          boolean ignoreEncodingErrors) throws IOException {
+        return text;
+      }
+    });
     DeferredDiagnosticHandler diagnostics = deferredDiagnosticHandler(log);
     ImmutableList<RawTok> rawToks = JavacTokens.getTokens(text, context, stopTokens);
     Collection<JCDiagnostic> ds;
@@ -436,8 +417,7 @@ final class JavaInput extends Input {
         isToken = false;
         isNumbered = true;
         strings.add(originalTokText);
-      } else if (Character.isJavaIdentifierStart(tokText0)
-          || Character.isDigit(tokText0)
+      } else if (Character.isJavaIdentifierStart(tokText0) || Character.isDigit(tokText0)
           || (tokText0 == '.' && tokText.length() > 1 && Character.isDigit(tokText.charAt(1)))) {
         // Identifier, keyword, or numeric literal (a dot may begin a number, as in .2D).
         isToken = true;
@@ -488,7 +468,8 @@ final class JavaInput extends Input {
   }
 
   private static final Constructor<DeferredDiagnosticHandler>
-      DEFERRED_DIAGNOSTIC_HANDLER_CONSTRUCTOR = getDeferredDiagnosticHandlerConstructor();
+      DEFERRED_DIAGNOSTIC_HANDLER_CONSTRUCTOR =
+      getDeferredDiagnosticHandlerConstructor();
 
   // Depending on the JDK version, we might have a static class whose constructor has an explicit
   // Log parameter, or an inner class whose constructor has an *implicit* Log parameter. They are
@@ -612,8 +593,8 @@ final class JavaInput extends Input {
    * @return the {@code 0}-based {@link Range} of tokens
    * @throws FormatterException if the upper endpoint of the range is outside the file
    */
-  private Range<Integer> characterRangeToTokenRange(Range<Integer> characterRange)
-      throws FormatterException {
+  private Range<Integer> characterRangeToTokenRange(
+      Range<Integer> characterRange) throws FormatterException {
     if (characterRange.upperEndpoint() > text.length()) {
       throw new FormatterException(
           String.format(
@@ -642,8 +623,7 @@ final class JavaInput extends Input {
    *
    * @return the number of toks, excluding the EOF tok
    */
-  @Override
-  public int getkN() {
+  @Override public int getkN() {
     return kN;
   }
 
@@ -652,8 +632,7 @@ final class JavaInput extends Input {
    *
    * @param k the Tok index
    */
-  @Override
-  public Token getToken(int k) {
+  @Override public Token getToken(int k) {
     return kToToken[k];
   }
 
@@ -662,8 +641,7 @@ final class JavaInput extends Input {
    *
    * @return the input tokens
    */
-  @Override
-  public ImmutableList<? extends Input.Token> getTokens() {
+  @Override public ImmutableList<? extends Input.Token> getTokens() {
     return tokens;
   }
 
@@ -674,13 +652,11 @@ final class JavaInput extends Input {
    *
    * @return the navigable map from position to {@link Token}
    */
-  @Override
-  public ImmutableRangeMap<Integer, Token> getPositionTokenMap() {
+  @Override public ImmutableRangeMap<Integer, Token> getPositionTokenMap() {
     return positionTokenMap;
   }
 
-  @Override
-  public String toString() {
+  @Override public String toString() {
     return MoreObjects.toStringHelper(this)
         .add("tokens", tokens)
         .add("super", super.toString())
@@ -689,26 +665,66 @@ final class JavaInput extends Input {
 
   private JCCompilationUnit unit;
 
-  @Override
-  public int getLineNumber(int inputPosition) {
+  @Override public int getLineNumber(int inputPosition) {
     Verify.verifyNotNull(unit, "Expected compilation unit to be set.");
     return unit.getLineMap().getLineNumber(inputPosition);
   }
 
-  @Override
-  public int getColumnNumber(int inputPosition) {
+  @Override public int getColumnNumber(int inputPosition) {
     Verify.verifyNotNull(unit, "Expected compilation unit to be set.");
     return unit.getLineMap().getColumnNumber(inputPosition);
   }
 
   // TODO(cushon): refactor JavaInput so the CompilationUnit can be passed into
   // the constructor.
+  private ImmutableSet<Integer> linesWithTrailingComment;
+
   void setCompilationUnit(JCCompilationUnit unit) {
     this.unit = unit;
+    ImmutableSet.Builder<Integer> trailingCommentLines = ImmutableSet.builder();
+    for (Token token : tokens) {
+      boolean hasComment = false;
+      int commentLine = -1;
+      for (Input.Tok tok : token.getToksAfter()) {
+        if (tok.isSlashSlashComment() || tok.isSlashStarComment()) {
+          hasComment = true;
+          commentLine = getLineNumber(tok.getPosition());
+        } else if (tok.isNewline() && hasComment) {
+          trailingCommentLines.add(commentLine);
+          hasComment = false;
+        }
+      }
+      if (hasComment) {
+        trailingCommentLines.add(commentLine);
+      }
+    }
+    this.linesWithTrailingComment = trailingCommentLines.build();
   }
 
-  RangeSet<Integer> characterRangesToTokenRanges(Collection<Range<Integer>> characterRanges)
-      throws FormatterException {
+  @Override public boolean hasTrailingComment(int lineNumber) {
+    return linesWithTrailingComment != null && linesWithTrailingComment.contains(lineNumber);
+  }
+
+  @Override public Optional<Token> getTokenAtOrAfter(int position) {
+    int low = 0;
+    int high = tokens.size() - 1;
+    int ans = -1;
+    while (low <= high) {
+      int mid = (low + high) >>> 1;
+      Token t = tokens.get(mid);
+      int tokPos = t.getTok().getPosition();
+      if (tokPos >= position) {
+        ans = mid;
+        high = mid - 1;
+      } else {
+        low = mid + 1;
+      }
+    }
+    return ans >= 0 ? Optional.of(tokens.get(ans)) : Optional.empty();
+  }
+
+  RangeSet<Integer> characterRangesToTokenRanges(
+      Collection<Range<Integer>> characterRanges) throws FormatterException {
     RangeSet<Integer> tokenRangeSet = TreeRangeSet.create();
     for (Range<Integer> characterRange : characterRanges) {
       tokenRangeSet.add(
