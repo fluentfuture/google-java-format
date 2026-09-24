@@ -2558,6 +2558,23 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     }
   }
 
+  private static ExpressionTree dotChainRoot(ExpressionTree node) {
+    while (true) {
+      if (node.getKind() == ARRAY_ACCESS) {
+        node = getArrayBase(node);
+      }
+      ExpressionTree next = switch (node.getKind()) {
+        case MEMBER_SELECT -> ((MemberSelectTree) node).getExpression();
+        case METHOD_INVOCATION -> getMethodReceiver((MethodInvocationTree) node);
+        default -> null;
+      };
+      if (next == null) {
+        return node;
+      }
+      node = next;
+    }
+  }
+
   private static int dotChainLength(ExpressionTree node0) {
     ExpressionTree node = node0;
     int count = 0;
@@ -2600,6 +2617,10 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
     if (expr.getKind() == Tree.Kind.METHOD_INVOCATION) {
       MethodInvocationTree methodInvocation = (MethodInvocationTree) expr;
       if (!methodInvocation.getArguments().isEmpty()) {
+        return true;
+      }
+      ExpressionTree root = dotChainRoot(expr);
+      if (root.getKind() == Tree.Kind.NEW_CLASS && ((NewClassTree) root).getClassBody() != null) {
         return true;
       }
       return dotChainLength(expr) > 2;
@@ -3158,7 +3179,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       if (needDot) {
         if (length > minLength) {
           Doc.FillMode fillMode =
-              shouldRelaxForTrailingComment(items.get(i - 1), e)
+              i > 0 && shouldRelaxForTrailingComment(items.get(i - 1), e)
                   ? Doc.FillMode.RELAXED
                   : FillMode.UNIFIED;
           builder.breakOp(fillMode, "", ZERO, Optional.of(dotTag), /* isMethodCall= */ true);
@@ -3243,7 +3264,7 @@ class JavaInputAstVisitor extends TreePathScanner<Void, Void> {
       ExpressionTree e = items.get(i);
       if (needDot) {
         FillMode fillMode;
-        if (shouldRelaxForTrailingComment(items.get(i - 1), e)) {
+        if (i > 0 && shouldRelaxForTrailingComment(items.get(i - 1), e)) {
           fillMode = Doc.FillMode.RELAXED;
         } else if (!unconsumedPrefixes.isEmpty() && i <= unconsumedPrefixes.peekFirst()) {
           fillMode = prefixFillMode;

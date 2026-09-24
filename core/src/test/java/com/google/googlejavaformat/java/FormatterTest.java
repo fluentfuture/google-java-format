@@ -1389,6 +1389,20 @@ class T {
     assertThat(new Formatter().formatSource(input)).isEqualTo(expected);
   }
 
+  @Test public void anonymousClassWrapping_assignmentWithSingleNoArgCall() throws Exception {
+    String input =
+        """
+        class T {
+          static final Parser<String> INTEGER = new Scanner("integer") {
+            @Override int scan() {
+              return 1;
+            }
+          }.source();
+        }
+        """;
+    assertThat(new Formatter().formatSource(input)).isEqualTo(input);
+  }
+
   @Test public void testRelaxedRectangularRule_dotChainReceiverExceedsLineLength()
       throws Exception {
     String input =
